@@ -1,0 +1,368 @@
+/* SONO-DIST: a second device on the bench, plus the cable that joins the two.
+   Built from the same tokens as sono303.css so the pair reads as one family. */
+
+/* ------------------------------------------------------------- workbench */
+
+/* Two units side by side on wide screens, stacked below. The gap is where the
+   cable lives, so it never shrinks to nothing. */
+.workbench {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: clamp(56px, 7vw, 104px);
+  width: 100%;
+  max-width: calc(var(--panel-max-width) + 400px);
+  padding-inline: 34px;
+}
+
+@media (max-width: 1180px) {
+  .workbench {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    gap: clamp(72px, 14vw, 120px);
+    padding-inline: 0;
+  }
+}
+
+/* --------------------------------------------------------------- module */
+
+.dist-shell {
+  width: clamp(268px, 25vw, 330px);
+  max-width: 100%;
+  transition: filter var(--transition-fast);
+}
+
+/* Unplugged: the module is out of the signal path, so it reads as cold metal.
+   The controls stay live on purpose — a sound can be dialled in first. */
+.dist-shell.is-unplugged .panel {
+  filter: saturate(0.7) brightness(0.95);
+}
+
+/* With no signal through it, nothing on the module can be lit. Overriding the
+   lit state here keeps the derived-from-mode markup honest: selection is still
+   shown by the button's own shape and border, never by colour alone. */
+.dist-shell.is-unplugged .led.is-on {
+  background: radial-gradient(circle at 38% 32%, #4a4f50, var(--led-off) 70%);
+  box-shadow:
+    inset 0 1px 2px rgb(0 0 0 / 55%),
+    0 1px 0 rgb(255 255 255 / 45%);
+}
+
+.dist-shell.is-unplugged .led.is-on::before {
+  background: rgb(255 255 255 / 45%);
+}
+
+.dist-panel {
+  display: grid;
+  gap: 0;
+}
+
+.dist-header {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: clamp(16px, 2.2vw, 24px) 16px clamp(14px, 2vw, 20px);
+}
+
+.dist-brand {
+  margin: 0;
+  font-family: var(--font-condensed);
+  font-size: clamp(1.5rem, 3.4vw, 2rem);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: var(--ink);
+  text-transform: uppercase;
+}
+
+.dist-subtitle {
+  margin: 0;
+  font-size: var(--label-size);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--muted-ink);
+  text-transform: uppercase;
+}
+
+.dist-active {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+/* ----------------------------------------------------------------- knobs */
+
+.dist-knobs {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  gap: clamp(4px, 1.4vw, 12px);
+  padding: clamp(14px, 2vw, 20px) 12px clamp(18px, 2.4vw, 26px);
+  border-top: 1px solid var(--groove);
+  box-shadow:
+    inset 0 1px 0 var(--highlight),
+    inset 0 2px 3px -2px rgb(0 0 0 / 30%);
+}
+
+.dist-knobs .knob {
+  width: clamp(72px, 7vw, 84px);
+}
+
+/* ------------------------------------------------------------ mode group */
+
+.dist-type {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: clamp(12px, 2vw, 18px);
+  padding: clamp(14px, 2vw, 20px) 12px clamp(18px, 2.4vw, 24px);
+  border-top: 1px solid var(--groove);
+  box-shadow:
+    inset 0 1px 0 var(--highlight),
+    inset 0 2px 3px -2px rgb(0 0 0 / 30%);
+}
+
+.dist-modes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+}
+
+.dist-mode {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
+.dist-mode__label {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.dist-mode__button {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--touch-target);
+  border: 1px solid var(--control-edge);
+  border-radius: var(--control-radius);
+  cursor: pointer;
+  transition: filter var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.dist-mode__button:hover {
+  filter: brightness(1.05);
+}
+
+/* The selected voicing stays pressed in — a shape difference, so the choice is
+   readable with the LEDs dark or with no colour perception at all. */
+.dist-mode__button.is-selected {
+  background: linear-gradient(
+    180deg,
+    var(--bezel-dark),
+    var(--control-face) 70%,
+    var(--bezel-light)
+  );
+  border-color: var(--inset-dark);
+  box-shadow: var(--shadow-control-pressed);
+  transform: translateY(1px);
+}
+
+@media (max-width: 360px) {
+  .dist-modes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+}
+
+/* ----------------------------------------------------------------- jacks */
+
+/* Panel-mounted sockets, protruding from the side each unit faces. */
+.jack {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  transform: translateY(-50%);
+}
+
+.jack--out {
+  right: -30px;
+}
+
+.jack--in {
+  left: -30px;
+}
+
+.jack__label {
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--rim-light);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 80%);
+}
+
+.jack__socket {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  padding: 0;
+  border: 1px solid #2b3032;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #b9bebd, #767c7e 60%, #4a5052);
+  box-shadow:
+    var(--shadow-control),
+    inset 0 1px 0 rgb(255 255 255 / 45%);
+  cursor: pointer;
+  transition: filter var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.jack__socket:hover {
+  filter: brightness(1.08);
+}
+
+.jack__socket:focus-visible {
+  outline: 2px solid var(--accent-red);
+  outline-offset: 3px;
+}
+
+/* Chromed collar around the hole. */
+.jack__ring {
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 210deg,
+    #e8ebe9,
+    #8f9597 25%,
+    #f2f4f2 50%,
+    #7d8385 75%,
+    #e8ebe9
+  );
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 35%);
+}
+
+.jack__hole {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, #2a2e30, #050708 70%);
+  box-shadow: inset 0 2px 4px rgb(0 0 0 / 90%);
+}
+
+/* A seated plug fills the hole, so the socket reads as occupied on its own. */
+.jack__socket.is-connected .jack__hole {
+  background: radial-gradient(circle at 45% 30%, #d9dcda, #8d9395 65%, #3d4345);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 45%);
+}
+
+@media (max-width: 1180px) {
+  /* Stacked: the cable runs vertically, so the sockets move to face each other. */
+  .jack {
+    top: auto;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+
+  .jack--out {
+    bottom: -34px;
+  }
+
+  .jack--in {
+    top: -34px;
+  }
+}
+
+/* ----------------------------------------------------------------- cable */
+
+/* Above the sockets (z 3): a seated plug has to stay grabbable, or the cable
+   could be plugged in by drag but only pulled out by click. */
+.patch {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.patch__svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+/* Drawn twice: a dark core with a lighter highlight on top, so the lead reads
+   as round rubber rather than a flat stroke. */
+.patch__cable {
+  fill: none;
+  stroke: #0d1011;
+  stroke-width: 9;
+  stroke-linecap: round;
+  filter: drop-shadow(0 6px 10px rgb(0 0 0 / 55%));
+}
+
+.patch__sheen {
+  fill: none;
+  stroke: rgb(255 255 255 / 16%);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transform: translateY(-1.5px);
+}
+
+.patch__plug {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+  padding: 0;
+  border: 1px solid #24292b;
+  border-radius: 50%;
+  background: linear-gradient(160deg, #e6e9e7, #9aa0a1 45%, #565c5e);
+  box-shadow: var(--shadow-control), inset 0 1px 0 rgb(255 255 255 / 55%);
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.patch__plug:hover {
+  filter: brightness(1.08);
+}
+
+.patch__plug.is-dragging {
+  cursor: grabbing;
+  box-shadow: var(--shadow-knob-lift), 0 0 0 3px var(--accent-red-glow);
+}
+
+/* Seated in a socket, the plug tucks behind the collar. */
+.patch__plug.is-seated {
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+}
+
+.patch__plug-tip {
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 30%, #f4f6f4, #7c8284 70%);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 40%);
+}
+
+.patch__plug.is-seated .patch__plug-tip {
+  inset: 4px;
+}

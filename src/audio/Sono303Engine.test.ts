@@ -32,6 +32,18 @@ const toneMock = vi.hoisted(() => {
     start: ReturnType<typeof vi.fn>;
     dispose: ReturnType<typeof vi.fn>;
   }> = [];
+  const gainInstances: FakeGain[] = [];
+
+  class FakeGain {
+    connect = vi.fn();
+    disconnect = vi.fn();
+    dispose = vi.fn();
+    value: number;
+    constructor(value: number) {
+      this.value = value;
+      gainInstances.push(this);
+    }
+  }
 
   class FakeMonoSynth {
     oscillator = { type: "sawtooth" };
@@ -54,10 +66,9 @@ const toneMock = vi.hoisted(() => {
     triggerAttack = vi.fn();
     triggerRelease = vi.fn();
     setNote = vi.fn();
+    connect = vi.fn();
     dispose = vi.fn();
-    toDestination() {
-      return this;
-    }
+    toDestination = vi.fn(() => this);
     options: unknown;
     constructor(options: unknown) {
       this.options = options;
@@ -111,10 +122,12 @@ const toneMock = vi.hoisted(() => {
     envelopeInstances,
     multiplyInstances,
     sequenceInstances,
+    gainInstances,
     FakeMonoSynth,
     FakeEnvelope,
     FakeMultiply,
     FakeSequence,
+    FakeGain,
     transport: {
       start: vi.fn(),
       stop: vi.fn(),
@@ -130,6 +143,7 @@ vi.mock("tone", () => ({
   Envelope: toneMock.FakeEnvelope,
   Multiply: toneMock.FakeMultiply,
   Sequence: toneMock.FakeSequence,
+  Gain: toneMock.FakeGain,
   getTransport: () => toneMock.transport,
   getDraw: () => toneMock.draw,
   start: toneMock.start,
@@ -172,6 +186,7 @@ beforeEach(() => {
   toneMock.envelopeInstances.length = 0;
   toneMock.multiplyInstances.length = 0;
   toneMock.sequenceInstances.length = 0;
+  toneMock.gainInstances.length = 0;
   vi.clearAllMocks();
 });
 
@@ -225,13 +240,45 @@ describe("Sono303Engine lifecycle", () => {
     engine.dispose();
   });
 
-  it("dispose() is idempotent and tears down synth and sequence", async () => {
+  it("dispose() is idempotent and tears down synth, sequence and output", async () => {
     const engine = new Sono303Engine();
     await engine.start();
     engine.dispose();
     engine.dispose();
     expect(synth().dispose).toHaveBeenCalledTimes(1);
     expect(toneMock.sequenceInstances[0].dispose).toHaveBeenCalledTimes(1);
+    expect(toneMock.gainInstances[0].dispose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Sono303Engine routing", () => {
+  it("owns an output bus that exists before the synth does", () => {
+    const engine = new Sono303Engine();
+    expect(toneMock.gainInstances).toHaveLength(1);
+    expect(engine.output).toBe(toneMock.gainInstances[0]);
+    engine.dispose();
+  });
+
+  it("routes the voice to its output bus and never to the destination", async () => {
+    const engine = new Sono303Engine();
+    await engine.initialize();
+
+    // Reaching Tone.Destination here would double the dry signal alongside
+    // whatever SONO-DIST sends, and would make BYPASS a lie.
+    expect(synth().toDestination).not.toHaveBeenCalled();
+    expect(synth().connect).toHaveBeenCalledWith(engine.output);
+    engine.dispose();
+  });
+
+  it("connects and detaches its output on request", async () => {
+    const engine = new Sono303Engine();
+    const destination = { name: "effect input" };
+    engine.connectOutput(destination as never);
+    expect(engine.output.connect).toHaveBeenCalledWith(destination);
+
+    engine.disconnectOutput();
+    expect(engine.output.disconnect).toHaveBeenCalled();
+    engine.dispose();
   });
 });
 

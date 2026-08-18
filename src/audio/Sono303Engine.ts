@@ -27,6 +27,13 @@ const ACCENT_DECAY_RATIO = 0.45;
  * in `stepLogic.ts`; this class only translates them into Tone.js calls.
  */
 export class Sono303Engine implements Sono303EngineApi {
+  /**
+   * The instrument's only outlet. It exists from construction — before the
+   * synth does — so the rig can wire the whole signal path up front and the
+   * user's first gesture only has to resume the context.
+   */
+  readonly output = new Tone.Gain(1);
+
   #synth: Tone.MonoSynth | null = null;
   #sequence: Tone.Sequence<number> | null = null;
   /**
@@ -84,7 +91,10 @@ export class Sono303Engine implements Sono303EngineApi {
         octaves: 3.25,
       },
       volume: -8,
-    }).toDestination();
+    });
+    // Never `.toDestination()`: the voice feeds the rig's output bus, which is
+    // what lets SONO-DIST sit in the path without the dry signal doubling it.
+    this.#synth.connect(this.output);
 
     this.#accentDepth = new Tone.Multiply(0);
     this.#accentEnv = new Tone.Envelope({
@@ -125,6 +135,16 @@ export class Sono303Engine implements Sono303EngineApi {
     this.#listener?.(null);
   }
 
+  connectOutput(destination: Tone.InputNode): void {
+    if (this.#disposed) return;
+    this.output.connect(destination);
+  }
+
+  disconnectOutput(): void {
+    if (this.#disposed) return;
+    this.output.disconnect();
+  }
+
   dispose(): void {
     if (this.#disposed) return;
     this.stop();
@@ -132,6 +152,7 @@ export class Sono303Engine implements Sono303EngineApi {
     this.#synth?.dispose();
     this.#accentEnv?.dispose();
     this.#accentDepth?.dispose();
+    this.output.dispose();
     this.#sequence = null;
     this.#synth = null;
     this.#accentEnv = null;

@@ -1,61 +1,62 @@
 import { useEffect, useRef } from "react";
-import { Sono303Engine } from "../audio/Sono303Engine";
-import type { Sono303EngineApi, Sono303EngineFactory } from "../audio/engineApi";
+import { SonoAudioRig } from "../audio/SonoAudioRig";
+import type { Sono303EngineFactory } from "../audio/engineApi";
 import { useSono303Dispatch, useSono303State } from "../state/hooks";
 
 /**
- * Production default: the real Tone.js engine. `MockSono303Engine` remains
- * available for tests and demos via the factory parameter.
- */
-const defaultEngineFactory: Sono303EngineFactory = () => new Sono303Engine();
-
-/**
- * The single integration seam between React state and the sound engine.
+ * The single integration seam between React state and the audio rig.
  *
- * It creates exactly one engine instance, pushes serializable state into it,
- * maps its step callback back onto a reducer action, and disposes it on
- * unmount. No other React module may import from `src/audio/`.
+ * It creates exactly one `SonoAudioRig` — instrument, effect, master bus and
+ * safety limiter — pushes serializable state into it, maps its step callback
+ * back onto a reducer action, and disposes it on unmount. No other React
+ * module may import from `src/audio/`.
  */
-export function useSono303(
-  createEngine: Sono303EngineFactory = defaultEngineFactory,
-): void {
+export function useSono303(createEngine?: Sono303EngineFactory): void {
   const state = useSono303State();
   const dispatch = useSono303Dispatch();
 
-  const engineRef = useRef<Sono303EngineApi | null>(null);
+  const rigRef = useRef<SonoAudioRig | null>(null);
 
-  // Lifecycle first: on (re)mount the engine exists before the effects below
-  // push the current state into it. The factory is intentionally captured once
-  // here — swapping factories requires a remount, which M2 does not need.
+  // Lifecycle first: on (re)mount the rig exists before the effects below push
+  // the current state into it. The factory is intentionally captured once here
+  // — swapping factories requires a remount, which nothing needs.
   useEffect(() => {
-    const engine = createEngine();
-    engineRef.current = engine;
-    engine.setStepListener((stepIndex) => {
+    const rig = new SonoAudioRig({ createSynth: createEngine });
+    rigRef.current = rig;
+    rig.synth.setStepListener((stepIndex) => {
       dispatch({ type: "transport/setCurrentStep", stepIndex });
     });
 
     return () => {
-      engineRef.current = null;
-      engine.dispose();
+      rigRef.current = null;
+      rig.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch]);
 
   useEffect(() => {
-    engineRef.current?.setPattern(state.steps);
+    rigRef.current?.synth.setPattern(state.steps);
   }, [state.steps]);
 
   useEffect(() => {
-    engineRef.current?.setParameters(state.parameters);
+    rigRef.current?.synth.setParameters(state.parameters);
   }, [state.parameters]);
 
   useEffect(() => {
-    const engine = engineRef.current;
-    if (!engine) return;
+    rigRef.current?.dist.setState(state.dist);
+  }, [state.dist]);
+
+  useEffect(() => {
+    rigRef.current?.setPatched(state.patched);
+  }, [state.patched]);
+
+  useEffect(() => {
+    const rig = rigRef.current;
+    if (!rig) return;
     if (state.transport === "started") {
-      void engine.start();
+      void rig.synth.start();
     } else {
-      engine.stop();
+      rig.synth.stop();
     }
   }, [state.transport]);
 }

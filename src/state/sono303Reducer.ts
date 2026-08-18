@@ -12,6 +12,7 @@ import type {
   SynthParameters,
   Waveform,
 } from "../sequencer/types";
+import { sonoDistReducer } from "./sonoDistReducer";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -171,6 +172,19 @@ export function sono303Reducer(
       return updateStep(state, state.selectedStep, (step) =>
         step.active ? { ...step, slide: !step.slide } : step,
       );
+
+    case "patch/set":
+      return action.patched === state.patched
+        ? state
+        : { ...state, patched: action.patched };
+
+    case "dist/setMode":
+    case "dist/setDrive":
+    case "dist/setTone":
+    case "dist/setLevel": {
+      const dist = sonoDistReducer(state.dist, action);
+      return dist === state.dist ? state : { ...state, dist };
+    }
 
     default:
       return state;

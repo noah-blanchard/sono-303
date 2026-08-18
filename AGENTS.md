@@ -20,9 +20,10 @@ anything from the spec's Explicit Non-Goals (§13).
 
 ## Branding
 
-- The product name displayed in the interface is exactly **`SONO-303`**.
-- Never display `ACID BASS`, `TB-303`, `Roland`, or other existing product
-  or company names as the application brand.
+- The product name displayed in the interface is exactly **`SONO-303`**, and
+  the distortion module is exactly **`SONO-DIST`**.
+- Never display `ACID BASS`, `TB-303`, `DTRONICS`, `DT-303`, `Roland`, or other
+  existing product or company names as the application brand.
 
 ## Architecture boundaries (enforced)
 
@@ -30,13 +31,18 @@ anything from the spec's Explicit Non-Goals (§13).
    Tone.js objects. See [docs/ENGINE_API.md](docs/ENGINE_API.md).
 2. `src/components/` — presentational React. **No Tone.js imports, no
    `src/audio/` imports.** Communicate only by dispatching reducer actions.
+   Anything the UI *and* the engine both need (e.g. the SONO-DIST knob
+   mappings) belongs in `src/sequencer/`, not in `src/audio/`.
 3. `src/sequencer/` — pure data model. No React, no Tone.js.
-4. `src/state/sono303Reducer.ts` — pure function. No side effects, no
-   Tone.js, no audio calls. State must stay serializable.
+4. `src/state/*Reducer.ts` — pure functions. No side effects, no Tone.js, no
+   audio calls. State must stay serializable, and derived flags (like whether
+   the distortion is active) are computed at render time, never stored.
 5. `src/hooks/useSono303.ts` — the **only** file allowed to bridge React and
    `src/audio/`.
 6. Musical decision logic lives in pure functions (`src/audio/stepLogic.ts`,
-   `src/sequencer/pitch.ts`) so it is unit-testable without Web Audio.
+   `src/audio/distortionCurves.ts`, `src/sequencer/pitch.ts`,
+   `src/sequencer/distortionMapping.ts`) so it is unit-testable without Web
+   Audio.
 
 ## State invariants
 
@@ -55,6 +61,13 @@ anything from the spec's Explicit Non-Goals (§13).
   create duplicate sequences.
 - `stop()` releases held notes and clears the playhead.
 - Continuous parameters ramp (`rampTo(v, 0.02..0.05)`); discrete ones don't.
+- **Exactly one path reaches `Tone.Destination`**, owned by `SonoAudioRig`.
+  No engine may call `.toDestination()`; a second path would double the dry
+  signal and make BYPASS meaningless.
+- Routing changes are cross-ramped gains, never `connect`/`disconnect` while
+  audio may be running.
+- A `Tone.Limiter(-1)` guards the output. It is a safety net, not a licence to
+  skip gain staging.
 - Tone.js Transport owns timing — never `setInterval`/rAF for audio
   scheduling (the M1 mock uses a timer but produces no audio).
 
