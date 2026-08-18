@@ -708,12 +708,17 @@ web page.
 
 ### 11.1 Page and panel composition
 
-- Use a very light, cool-gray page background.
+- Use a dark studio-room page background: a near-black floor gradient, a soft
+  overhead spotlight behind the instrument, and a corner vignette. The room is
+  the environment, not the instrument — **the panel itself stays silver.**
 - Center one large instrument panel horizontally and vertically when viewport height permits.
 - Target a maximum panel width around `1440px` to `1520px`.
 - Use a compact wide landscape proportion similar to the visual reference.
 - Present the panel front-on with no perspective transform.
-- Use subtle external shadow and edge highlights to separate it from the page.
+- Wrap the panel in a chamfered metal shell carrying the corner hardware and a
+  soft floor reflection beneath the machine.
+- Use deep external shadow and rim highlights so the machine reads as a solid
+  object standing in the room rather than a card on a page.
 - Build every surface, highlight, tick, LED, and shadow with HTML/CSS or small inline SVG where appropriate. Do not use a photograph as the implemented interface.
 - Organize the panel into four horizontal zones separated by thin metallic borders.
 
@@ -802,12 +807,23 @@ tokens:
   --panel-radius: 10px;
   --control-radius: 4px;
   --touch-target: 44px;
+
+  /* Room — the dark environment the machine stands in */
+  --room-bg: #0a0c0d;
+  --room-bg-lift: #191e20;
+  --room-floor: #050708;
+  --rim-light: rgb(255 255 255 / 55%);
+
+  /* Texture — one shared inline-SVG noise field, reused by every material */
+  --noise: url("data:image/svg+xml,…feTurbulence fractalNoise…");
 }
 ```
 
-The values may be tuned while implementing, but the palette must remain cool
-silver, off-white, charcoal, graphite, and restrained red. Do not add neon
-colors, blue LEDs, colorful gradients, wood, leather, or dark-theme panels.
+The values may be tuned while implementing, but the **instrument** palette must
+remain cool silver, off-white, charcoal, graphite, and restrained red, standing
+on a near-black room. Do not add neon colors, blue LEDs, colorful gradients,
+wood, or leather, and do not recolor the panel itself dark — the contrast of a
+silver machine against a dark room is the intended look.
 
 Suggested panel surface:
 
@@ -822,8 +838,13 @@ background:
   linear-gradient(180deg, var(--panel-silver-light), var(--panel-silver));
 ```
 
-Keep the texture extremely subtle. Legibility is more important than material
-simulation.
+Surface grain may be added with a small inline-SVG `feTurbulence` noise field
+delivered as a CSS data URI (the `--noise` token), blended at low opacity over
+the panel, knob caps and button faces. No raster image files — §13 still stands.
+
+Keep the texture subtle. Legibility is more important than material simulation:
+the panel stays silver and labels stay dark charcoal, so no contrast pair
+changes when the room goes dark.
 
 ### 11.7 Typography
 

@@ -178,12 +178,20 @@ export function RotaryKnob({
             />
           ))}
         </span>
-        <span className="knob__face" aria-hidden="true">
-          <span
-            className="knob__indicator"
-            style={{ transform: `rotate(${angle}deg)` }}
-          />
+        {/* Static recess the knob sits in. */}
+        <span className="knob__well" aria-hidden="true" />
+        {/* The physical knob: skirt, cap and pointer turn together. */}
+        <span
+          className="knob__body"
+          aria-hidden="true"
+          style={{ transform: `rotate(${angle}deg)` }}
+        >
+          <span className="knob__grip" />
+          <span className="knob__cap" />
+          <span className="knob__indicator" />
         </span>
+        {/* Specular highlight: fixed light source, so it must not rotate. */}
+        <span className="knob__gloss" aria-hidden="true" />
       </div>
       <output className="knob__readout">{readout}</output>
     </div>

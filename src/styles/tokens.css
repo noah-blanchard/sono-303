@@ -17,14 +17,28 @@
   --control-radius: 4px;
   --touch-target: 44px;
 
+  /* Room — the dark environment the machine sits in */
+  --room-bg: #0a0c0d;
+  --room-bg-lift: #191e20;
+  --room-floor: #050708;
+  --rim-light: rgb(255 255 255 / 55%);
+
   /* Derived surfaces */
   --bezel-light: #e4e6e4;
   --bezel-dark: #9ca1a1;
+  --bezel-darker: #7f8586;
   --groove: rgb(0 0 0 / 22%);
   --highlight: rgb(255 255 255 / 70%);
   --key-white: #f7f8f5;
   --key-black: #1b1e1f;
   --display-ink: #f0f3ef;
+  --led-off: #3a3e3f;
+  --led-hot: #ff8a8d;
+  --accent-red-bloom: rgb(213 32 36 / 70%);
+
+  /* Texture — one shared inline-SVG noise field, reused by every material.
+     Angle brackets and '#' are percent-encoded so the data URI never truncates. */
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 
   /* Metrics */
   --panel-max-width: 1480px;
@@ -33,9 +47,15 @@
   --label-size: 0.6875rem;
 
   /* Depth */
-  --shadow-panel: 0 24px 48px rgb(0 0 0 / 16%), 0 2px 6px rgb(0 0 0 / 12%);
-  --shadow-control: 0 2px 3px rgb(0 0 0 / 22%);
+  --shadow-panel:
+    0 40px 80px -20px rgb(0 0 0 / 85%),
+    0 12px 28px rgb(0 0 0 / 55%),
+    0 2px 4px rgb(0 0 0 / 45%);
+  --shadow-control: 0 1px 1px rgb(0 0 0 / 30%), 0 3px 6px rgb(0 0 0 / 22%);
   --shadow-control-inset: inset 0 1px 0 rgb(255 255 255 / 60%);
+  --shadow-control-pressed: inset 0 3px 6px rgb(0 0 0 / 35%);
+  --shadow-knob: 0 3px 6px rgb(0 0 0 / 32%), 0 8px 16px -4px rgb(0 0 0 / 26%);
+  --shadow-knob-lift: 0 5px 9px rgb(0 0 0 / 34%), 0 12px 22px -4px rgb(0 0 0 / 30%);
 
   /* Motion */
   --transition-fast: 120ms ease;

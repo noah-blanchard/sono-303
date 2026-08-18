@@ -1,23 +1,131 @@
 /* SONO-303 panel styles. Four horizontal zones on one brushed-silver panel,
-   matching concept/concept_art_sono303.png. Colours come from tokens.css. */
+   standing in a dark studio room. Colours come from tokens.css. */
 
 /* ---------------------------------------------------------------- stage */
 
 .stage {
+  position: relative;
   min-height: 100vh;
   display: grid;
   place-items: center;
   padding: clamp(12px, 3vw, 40px);
 }
 
+/* Room vignette: darkens the corners so the machine is the lit subject. */
+.stage::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 90% 75% at 50% 42%,
+    transparent 40%,
+    rgb(0 0 0 / 55%) 100%
+  );
+}
+
+/* ------------------------------------------------------------ panel shell */
+
+/* The outer case: a chamfered metal edge that catches the overhead light,
+   plus the corner hardware and the floor reflection. Kept separate from
+   .panel because .panel clips its own overflow. */
+.panel-shell {
+  position: relative;
+  width: 100%;
+  max-width: var(--panel-max-width);
+  padding: 7px;
+  border-radius: calc(var(--panel-radius) + 5px);
+  background: linear-gradient(
+    180deg,
+    #dfe2e0 0%,
+    #a9aeae 12%,
+    #6e7476 55%,
+    #40474a 100%
+  );
+  box-shadow:
+    var(--shadow-panel),
+    inset 0 1px 0 var(--rim-light),
+    inset 0 -1px 0 rgb(0 0 0 / 60%);
+}
+
+/* Soft bounce of the machine on the dark surface it stands on. */
+.panel-shell::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 6%;
+  right: 6%;
+  height: 130px;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at 50% 0%,
+    rgb(210 220 225 / 9%),
+    transparent 70%
+  );
+  filter: blur(14px);
+}
+
+.panel-shell__screw {
+  position: absolute;
+  z-index: 1;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #eceeec, #9aa09e 55%, #666c6d 100%);
+  box-shadow:
+    inset 0 -1px 1px rgb(0 0 0 / 45%),
+    inset 0 1px 1px rgb(255 255 255 / 60%),
+    0 1px 2px rgb(0 0 0 / 50%);
+}
+
+/* Phillips slot, drawn as a cross of two dark bars. */
+.panel-shell__screw::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  background:
+    linear-gradient(90deg, transparent 42%, rgb(0 0 0 / 55%) 42% 58%, transparent 58%),
+    linear-gradient(0deg, transparent 42%, rgb(0 0 0 / 55%) 42% 58%, transparent 58%);
+}
+
+/* Each screw sits at a different angle — real hardware is never aligned. */
+.panel-shell__screw--tl {
+  top: 12px;
+  left: 12px;
+  transform: rotate(18deg);
+}
+
+.panel-shell__screw--tr {
+  top: 12px;
+  right: 12px;
+  transform: rotate(-42deg);
+}
+
+.panel-shell__screw--bl {
+  bottom: 12px;
+  left: 12px;
+  transform: rotate(63deg);
+}
+
+.panel-shell__screw--br {
+  bottom: 12px;
+  right: 12px;
+  transform: rotate(-11deg);
+}
+
 /* ---------------------------------------------------------------- panel */
 
 .panel {
+  position: relative;
   width: 100%;
-  max-width: var(--panel-max-width);
   border-radius: var(--panel-radius);
   border: 1px solid var(--panel-silver-dark);
   background:
+    repeating-linear-gradient(
+      90deg,
+      rgb(255 255 255 / 5%) 0 1px,
+      rgb(0 0 0 / 4%) 1px 3px
+    ),
     linear-gradient(
       105deg,
       rgb(255 255 255 / 28%) 0%,
@@ -27,20 +135,40 @@
       rgb(0 0 0 / 6%) 100%
     ),
     linear-gradient(180deg, var(--panel-silver-light) 0%, var(--panel-silver) 55%, var(--panel-silver-dark) 140%);
-  box-shadow: var(--shadow-panel), inset 0 1px 0 var(--highlight);
+  box-shadow:
+    inset 0 1px 0 var(--highlight),
+    inset 0 -2px 4px rgb(0 0 0 / 18%),
+    0 1px 2px rgb(0 0 0 / 45%);
   overflow: hidden;
 }
 
+/* Rolled-metal grain over the whole faceplate. */
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--noise);
+  opacity: 0.28;
+  mix-blend-mode: overlay;
+}
+
 .zone {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: clamp(18px, 2.4vw, 40px);
   padding: var(--zone-padding-block) var(--zone-padding-inline);
 }
 
+/* Machined groove between zones: cut line, then light on the lower lip. */
 .zone + .zone {
   border-top: 1px solid var(--groove);
-  box-shadow: inset 0 1px 0 var(--highlight);
+  box-shadow:
+    inset 0 1px 0 var(--highlight),
+    inset 0 2px 3px -2px rgb(0 0 0 / 30%);
 }
 
 .zone__divider {
@@ -113,10 +241,13 @@
   display: inline-flex;
   border-radius: var(--control-radius);
   border: 1px solid var(--control-edge);
-  background: var(--inset-dark);
+  background: linear-gradient(180deg, #0c0e0f, var(--inset-dark));
   padding: 3px;
   gap: 3px;
-  box-shadow: inset 0 2px 4px rgb(0 0 0 / 45%);
+  box-shadow:
+    inset 0 3px 6px rgb(0 0 0 / 70%),
+    inset 0 -1px 1px rgb(255 255 255 / 8%),
+    0 1px 0 var(--highlight);
 }
 
 .segmented__option {
@@ -137,11 +268,21 @@
   color: var(--ink);
 }
 
+/* The selected pill is a raised cap, moulded like the panel buttons. */
 .segmented__option[aria-pressed="true"] {
-  background: linear-gradient(180deg, var(--bezel-light), var(--control-face));
+  background: linear-gradient(
+    180deg,
+    #eef0ee 0 8%,
+    var(--bezel-light) 22%,
+    var(--control-face) 60%,
+    var(--bezel-dark) 100%
+  );
   border-color: var(--control-edge);
   color: var(--ink);
-  box-shadow: var(--shadow-control), var(--shadow-control-inset);
+  box-shadow:
+    var(--shadow-control),
+    var(--shadow-control-inset),
+    inset 0 -2px 3px rgb(0 0 0 / 18%);
 }
 
 /* ---------------------------------------------------------------- knobs */
@@ -198,6 +339,7 @@
   inset: 0;
 }
 
+/* Engraved: cut line with light collecting on its lower edge. */
 .knob__tick::before {
   content: "";
   position: absolute;
@@ -208,52 +350,97 @@
   margin-left: -1px;
   background: var(--ink);
   border-radius: 1px;
+  box-shadow: 0 1px 0 rgb(255 255 255 / 55%);
 }
 
-.knob__face {
+/* The shallow recess the knob is seated in — just enough contact shadow
+   to sit it in the panel, no heavy collar. */
+.knob__well {
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(0 0 0 / 12%) 72%, transparent 100%);
+}
+
+/* Everything physical about the knob turns as one object. */
+.knob__body {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  transition: transform var(--transition-fast);
+}
+
+/* Turned-aluminium body. Broad soft lobes rather than knurling: the surface
+   stays quiet, but because it is angular it still reads as turning. */
+.knob__grip {
   position: absolute;
   inset: 0;
   border-radius: 50%;
   border: 1px solid var(--control-edge);
-  background:
-    radial-gradient(circle at 34% 28%, rgb(255 255 255 / 85%), rgb(255 255 255 / 0%) 42%),
-    conic-gradient(
-      from 210deg,
-      #e8eae8,
-      #b9bdbb 18%,
-      #eceeec 38%,
-      #a9aeac 55%,
-      #e8eae8 74%,
-      #b9bdbb 90%,
-      #e8eae8
-    );
+  background: conic-gradient(
+    from 210deg,
+    #e4e6e4,
+    #c3c7c5 18%,
+    #e8eae8 38%,
+    #b8bdbb 55%,
+    #e4e6e4 74%,
+    #c3c7c5 90%,
+    #e4e6e4
+  );
+  box-shadow: var(--shadow-control), inset 0 -2px 4px rgb(0 0 0 / 18%);
+  transition: box-shadow var(--transition-fast);
+}
+
+/* A single faint step where the cap meets the body — one edge, not a dome. */
+.knob__cap {
+  position: absolute;
+  inset: 20%;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgb(255 255 255 / 22%), rgb(0 0 0 / 8%));
   box-shadow:
-    var(--shadow-control),
-    inset 0 2px 3px rgb(255 255 255 / 70%),
-    inset 0 -3px 6px rgb(0 0 0 / 24%);
+    inset 0 1px 0 rgb(255 255 255 / 45%),
+    0 1px 1px rgb(0 0 0 / 12%);
 }
 
 .knob__indicator {
   position: absolute;
   inset: 0;
-  transition: transform var(--transition-fast);
 }
 
 .knob__indicator::before {
   content: "";
   position: absolute;
-  top: 6px;
+  top: 7px;
   left: 50%;
-  width: 3px;
-  height: 22%;
-  margin-left: -1.5px;
-  border-radius: 2px;
+  width: 2px;
+  height: 20%;
+  margin-left: -1px;
+  border-radius: 1px;
   background: var(--ink);
-  box-shadow: 0 0 2px rgb(0 0 0 / 50%);
 }
 
 .knob__dial.is-active .knob__indicator::before {
   background: var(--accent-red);
+}
+
+/* Fixed light source: this layer never rotates, so the knob reads as a
+   solid object turning under a lamp rather than a spinning picture. */
+.knob__gloss {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 65% 50% at 32% 20%,
+    rgb(255 255 255 / 45%),
+    transparent 60%
+  );
+}
+
+/* Picking a knob up off the panel. */
+.knob__dial:hover .knob__grip,
+.knob__dial.is-active .knob__grip {
+  box-shadow: var(--shadow-knob), inset 0 -2px 4px rgb(0 0 0 / 18%);
 }
 
 .knob__readout {
@@ -292,39 +479,89 @@
   gap: 8px;
 }
 
+/* Shared button moulding: bright top chamfer, mid face, dark lower facet. */
+.transport-button,
+.panel-button,
+.step__button {
+  position: relative;
+  background:
+    linear-gradient(
+      180deg,
+      #eef0ee 0 6%,
+      var(--bezel-light) 18%,
+      var(--control-face) 55%,
+      var(--bezel-dark) 88%,
+      var(--bezel-darker) 100%
+    );
+  box-shadow:
+    var(--shadow-control),
+    var(--shadow-control-inset),
+    inset 0 -2px 3px rgb(0 0 0 / 18%),
+    inset 1px 0 0 rgb(255 255 255 / 30%),
+    inset -1px 0 0 rgb(0 0 0 / 12%);
+}
+
+/* Moulded-plastic grain on every button face. */
+.transport-button::after,
+.panel-button::after,
+.step__button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background-image: var(--noise);
+  opacity: 0.12;
+  mix-blend-mode: overlay;
+}
+
 .transport-button {
   width: 150px;
   height: var(--touch-target);
   border: 1px solid var(--control-edge);
   border-radius: var(--control-radius);
-  background: linear-gradient(180deg, var(--bezel-light), var(--control-face) 60%, var(--bezel-dark));
-  box-shadow: var(--shadow-control), var(--shadow-control-inset);
   cursor: pointer;
-  transition: filter var(--transition-fast);
+  transition: filter var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .transport-button:hover {
   filter: brightness(1.05);
 }
 
-.transport-button:active {
-  transform: translateY(1px);
-  box-shadow: inset 0 2px 4px rgb(0 0 0 / 25%);
+.transport-button:active,
+.transport-button[aria-pressed="true"] {
+  background: linear-gradient(180deg, var(--bezel-dark), var(--control-face) 70%, var(--bezel-light));
+  box-shadow: var(--shadow-control-pressed);
 }
 
-.transport-button[aria-pressed="true"] {
-  background: linear-gradient(180deg, var(--bezel-dark), var(--control-face));
-  box-shadow: inset 0 2px 5px rgb(0 0 0 / 30%);
+.transport-button:active {
+  transform: translateY(2px);
 }
 
 /* LEDs */
 
 .led {
+  position: relative;
   display: inline-block;
   border-radius: 50%;
-  background: #3a3e3f;
+  background: radial-gradient(circle at 38% 32%, #4a4f50, var(--led-off) 70%);
   border: 1px solid rgb(0 0 0 / 45%);
-  box-shadow: inset 0 1px 2px rgb(0 0 0 / 55%);
+  box-shadow:
+    inset 0 1px 2px rgb(0 0 0 / 55%),
+    0 1px 0 rgb(255 255 255 / 45%);
+}
+
+/* Lens: a small offset specular dot on the dome. */
+.led::before {
+  content: "";
+  position: absolute;
+  top: 12%;
+  left: 22%;
+  width: 34%;
+  height: 30%;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 45%);
+  pointer-events: none;
 }
 
 .led--transport {
@@ -338,15 +575,21 @@
 }
 
 .led.is-on {
-  background: radial-gradient(circle at 38% 32%, #ff8a8d, var(--accent-red) 58%);
+  background: radial-gradient(circle at 38% 32%, var(--led-hot), var(--accent-red) 58%);
   box-shadow:
-    0 0 8px 2px var(--accent-red-glow),
+    0 0 10px 3px var(--accent-red-glow),
+    0 0 22px 6px var(--accent-red-bloom),
     inset 0 1px 1px rgb(255 255 255 / 45%);
+}
+
+.led.is-on::before {
+  background: rgb(255 255 255 / 75%);
 }
 
 /* Tempo display */
 
 .tempo-display {
+  position: relative;
   display: flex;
   align-items: baseline;
   justify-content: center;
@@ -356,8 +599,32 @@
   padding: 10px 0;
   border-radius: var(--control-radius);
   border: 1px solid var(--control-edge);
-  background: linear-gradient(180deg, #0c0e0f, var(--inset-dark));
-  box-shadow: inset 0 2px 8px rgb(0 0 0 / 75%), 0 1px 0 var(--highlight);
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgb(255 255 255 / 3%) 0 1px,
+      transparent 1px 3px
+    ),
+    linear-gradient(180deg, #0c0e0f, var(--inset-dark));
+  box-shadow:
+    inset 0 3px 10px rgb(0 0 0 / 85%),
+    inset 0 -1px 2px rgb(255 255 255 / 8%),
+    0 1px 0 var(--highlight);
+  overflow: hidden;
+}
+
+/* Glass: a diagonal sheen across the readout. */
+.tempo-display::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    118deg,
+    rgb(255 255 255 / 10%) 0%,
+    rgb(255 255 255 / 3%) 28%,
+    transparent 46%
+  );
 }
 
 .tempo-display__value {
@@ -387,8 +654,6 @@
   padding: 0 14px;
   border: 1px solid var(--control-edge);
   border-radius: var(--control-radius);
-  background: linear-gradient(180deg, var(--bezel-light), var(--control-face) 60%, var(--bezel-dark));
-  box-shadow: var(--shadow-control), var(--shadow-control-inset);
   color: var(--ink);
   font-size: 1.05rem;
   font-weight: 700;
@@ -397,7 +662,7 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: filter var(--transition-fast);
+  transition: filter var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .panel-button:hover:not(:disabled) {
@@ -405,8 +670,8 @@
 }
 
 .panel-button:active:not(:disabled) {
-  transform: translateY(1px);
-  box-shadow: inset 0 2px 4px rgb(0 0 0 / 28%);
+  transform: translateY(2px);
+  box-shadow: var(--shadow-control-pressed);
 }
 
 .panel-button:disabled {
@@ -427,18 +692,22 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: #3a3e3f;
-  box-shadow: inset 0 1px 2px rgb(0 0 0 / 55%);
+  background: radial-gradient(circle at 38% 32%, #4a4f50, var(--led-off) 70%);
+  box-shadow:
+    inset 0 1px 2px rgb(0 0 0 / 55%),
+    0 1px 0 rgb(255 255 255 / 40%);
 }
 
 .panel-button--toggle[aria-pressed="true"] {
-  background: linear-gradient(180deg, var(--bezel-dark), var(--control-face));
-  box-shadow: inset 0 2px 5px rgb(0 0 0 / 30%);
+  background: linear-gradient(180deg, var(--bezel-dark), var(--control-face) 70%, var(--bezel-light));
+  box-shadow: var(--shadow-control-pressed);
 }
 
 .panel-button--toggle[aria-pressed="true"] .dot {
-  background: radial-gradient(circle at 38% 32%, #ff8a8d, var(--accent-red) 58%);
-  box-shadow: 0 0 8px 2px var(--accent-red-glow);
+  background: radial-gradient(circle at 38% 32%, var(--led-hot), var(--accent-red) 58%);
+  box-shadow:
+    0 0 10px 3px var(--accent-red-glow),
+    0 0 20px 5px var(--accent-red-bloom);
 }
 
 .transpose {
@@ -462,6 +731,7 @@
   padding-top: 0;
 }
 
+/* Machined trough: the step row sits in a recessed channel. */
 .sequencer__header {
   margin: 0 calc(-1 * var(--zone-padding-inline));
   padding: 10px var(--zone-padding-inline);
@@ -471,7 +741,10 @@
   font-weight: 700;
   letter-spacing: 0.28em;
   text-transform: uppercase;
-  box-shadow: inset 0 -1px 0 rgb(255 255 255 / 8%);
+  box-shadow:
+    inset 0 4px 6px -3px rgb(0 0 0 / 80%),
+    inset 0 -1px 0 rgb(255 255 255 / 10%),
+    0 1px 0 var(--highlight);
 }
 
 .sequencer__grid {
@@ -508,15 +781,12 @@
 }
 
 .step__button {
-  position: relative;
   width: var(--touch-target);
   height: var(--touch-target);
   border: 1px solid var(--control-edge);
   border-radius: var(--control-radius);
-  background: linear-gradient(180deg, var(--bezel-light), var(--control-face) 60%, var(--bezel-dark));
-  box-shadow: var(--shadow-control), var(--shadow-control-inset);
   cursor: pointer;
-  transition: filter var(--transition-fast);
+  transition: filter var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .step__button:hover {
@@ -524,13 +794,16 @@
 }
 
 .step__button:active {
-  transform: translateY(1px);
+  transform: translateY(2px);
+  box-shadow: var(--shadow-control-pressed);
 }
 
-.step__button.is-selected {
+.step__button.is-selected,
+.step__button.is-selected.is-playing {
   box-shadow:
     var(--shadow-control),
     var(--shadow-control-inset),
+    inset 0 -2px 3px rgb(0 0 0 / 18%),
     inset 0 0 0 2px var(--ink);
 }
 
@@ -539,28 +812,28 @@
   inset: -4px;
   border: 2px solid var(--accent-red);
   border-radius: 6px;
-  box-shadow: 0 0 10px 2px var(--accent-red-glow);
-}
-
-.step__button.is-selected.is-playing {
   box-shadow:
-    var(--shadow-control),
-    var(--shadow-control-inset),
-    inset 0 0 0 2px var(--ink);
+    0 0 10px 2px var(--accent-red-glow),
+    0 0 20px 6px var(--accent-red-bloom);
 }
 
 .step__dot {
+  position: relative;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #3a3e3f;
+  background: radial-gradient(circle at 38% 32%, #4a4f50, var(--led-off) 70%);
   border: 1px solid rgb(0 0 0 / 40%);
-  box-shadow: inset 0 1px 2px rgb(0 0 0 / 55%);
+  box-shadow:
+    inset 0 1px 2px rgb(0 0 0 / 55%),
+    0 1px 0 rgb(255 255 255 / 40%);
 }
 
 .step__dot.is-on {
-  background: radial-gradient(circle at 38% 32%, #ff8a8d, var(--accent-red) 58%);
-  box-shadow: 0 0 6px 1px var(--accent-red-glow);
+  background: radial-gradient(circle at 38% 32%, var(--led-hot), var(--accent-red) 58%);
+  box-shadow:
+    0 0 7px 2px var(--accent-red-glow),
+    0 0 16px 4px var(--accent-red-bloom);
 }
 
 .step__flags {
@@ -661,8 +934,28 @@
   flex: 1;
   border: 1px solid var(--control-edge);
   border-radius: 0 0 3px 3px;
-  background: linear-gradient(180deg, #ffffff, var(--key-white) 70%, #d9dcd6);
-  box-shadow: inset 0 -4px 6px rgb(0 0 0 / 10%);
+  background:
+    linear-gradient(90deg, rgb(0 0 0 / 10%) 0 1px, transparent 1px calc(100% - 1px), rgb(0 0 0 / 6%) calc(100% - 1px)),
+    linear-gradient(180deg, #ffffff, var(--key-white) 70%, #d9dcd6);
+  box-shadow:
+    inset 0 -4px 6px rgb(0 0 0 / 10%),
+    inset 1px 0 0 rgb(255 255 255 / 80%),
+    0 2px 3px rgb(0 0 0 / 20%);
+  transition: filter var(--transition-fast), transform var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+/* Front lip: the vertical face at the end of the key. */
+.key--white::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 7px;
+  border-radius: 0 0 3px 3px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgb(0 0 0 / 4%), rgb(0 0 0 / 16%));
 }
 
 .key--white .key__label {
@@ -673,9 +966,19 @@
   filter: brightness(0.96);
 }
 
+/* Real key travel: the front dips and the cast shadow collapses. */
+.key--white:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 -2px 4px rgb(0 0 0 / 16%),
+    inset 0 3px 5px rgb(0 0 0 / 14%);
+}
+
 .key--white.is-selected {
   box-shadow:
     inset 0 -4px 6px rgb(0 0 0 / 10%),
+    inset 1px 0 0 rgb(255 255 255 / 80%),
+    0 2px 3px rgb(0 0 0 / 20%),
     inset 0 0 0 2px var(--accent-red);
 }
 
@@ -687,9 +990,15 @@
   height: 58%;
   border: 1px solid #000;
   border-radius: 0 0 3px 3px;
-  background: linear-gradient(180deg, #34393a, var(--key-black) 70%);
-  box-shadow: 0 3px 5px rgb(0 0 0 / 40%);
+  /* Top facet catching the overhead light, then the matte body. */
+  background: linear-gradient(180deg, #4a5052 0 5%, #34393a 22%, var(--key-black) 70%, #0e1112 100%);
+  box-shadow:
+    0 5px 9px rgb(0 0 0 / 55%),
+    0 1px 0 rgb(255 255 255 / 12%) inset,
+    inset -2px 0 3px rgb(0 0 0 / 50%);
   pointer-events: auto;
+  transition: filter var(--transition-fast), transform var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .key--black .key__label {
@@ -702,9 +1011,17 @@
   filter: brightness(1.3);
 }
 
+.key--black:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow:
+    0 2px 4px rgb(0 0 0 / 50%),
+    inset 0 2px 4px rgb(0 0 0 / 60%);
+}
+
 .key--black.is-selected {
   box-shadow:
-    0 3px 5px rgb(0 0 0 / 40%),
+    0 5px 9px rgb(0 0 0 / 55%),
+    inset -2px 0 3px rgb(0 0 0 / 50%),
     inset 0 0 0 2px var(--accent-red);
 }
 
@@ -784,12 +1101,16 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .knob__body,
+  .knob__grip,
   .knob__indicator,
   .panel-button,
   .transport-button,
   .segmented__option,
   .step__button,
-  .key {
+  .key,
+  .key--white,
+  .key--black {
     transition: none;
   }
 }
