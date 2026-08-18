@@ -211,11 +211,13 @@ sequenceDiagram
 | `sequencer/*`            | —  | pure data model            | + pitch tests           |
 | `state/*`                | —  | reducer + context          | + reducer tests         |
 | `audio/engineApi.ts`     | —  | interface defined          | unchanged               |
-| Engine implementation    | —  | `MockSono303Engine` (timer)| `Sono303Engine` (Tone.js)|
-| `audio/stepLogic.ts`     | —  | —                          | pure logic + tests      |
+| Engine implementation    | —  | `MockSono303Engine` (timer)| `Sono303Engine` (Tone.js) ✅ |
+| `audio/stepLogic.ts`     | —  | —                          | pure logic + tests ✅   |
 | `components/*`           | —  | full four-zone UI          | unchanged               |
-| `hooks/useSono303.ts`    | —  | wired to mock factory      | one-line factory swap   |
+| `hooks/useSono303.ts`    | —  | wired to mock factory      | real engine factory ✅  |
 
 The mock and the real engine implement the **same** `Sono303EngineApi`.
-Milestone 2 changes nothing in `components/`, `state/`, or `sequencer/` —
-only which factory `useSono303` uses by default.
+Milestone 2 changed nothing in `components/`, `state/`, or `sequencer/` —
+only which factory `useSono303` uses by default. The mock remains in the
+repo as a test/demo artifact and as a reference implementation of the
+engine contract.

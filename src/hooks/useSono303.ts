@@ -1,10 +1,13 @@
 import { useEffect, useRef } from "react";
-import { MockSono303Engine } from "../audio/MockSono303Engine";
+import { Sono303Engine } from "../audio/Sono303Engine";
 import type { Sono303EngineApi, Sono303EngineFactory } from "../audio/engineApi";
 import { useSono303Dispatch, useSono303State } from "../state/hooks";
 
-/** Milestone 1 default. Milestone 2 swaps this for the real Tone.js engine. */
-const defaultEngineFactory: Sono303EngineFactory = () => new MockSono303Engine();
+/**
+ * Production default: the real Tone.js engine. `MockSono303Engine` remains
+ * available for tests and demos via the factory parameter.
+ */
+const defaultEngineFactory: Sono303EngineFactory = () => new Sono303Engine();
 
 /**
  * The single integration seam between React state and the sound engine.

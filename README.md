@@ -31,17 +31,9 @@ bun run dev
 
 ## Status
 
-See [docs/PLAN.md](docs/PLAN.md) for the milestone roadmap. Sound generation
-lands in Milestone 2; audio only ever starts from an explicit user gesture.
-
-## Old template notes (React + TypeScript + Vite)
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+All milestones are complete: the panel is fully interactive and the real
+Tone.js sound engine (`src/audio/Sono303Engine.ts`) is wired in. Audio only
+ever starts from an explicit user gesture (the START button).
 
 ## React Compiler
 
