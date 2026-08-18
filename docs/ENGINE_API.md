@@ -60,6 +60,8 @@ export type Sono303EngineApi = {
   setPattern(pattern: Pattern): void;
   setParameters(parameters: SynthParameters): void;
   setStepListener(listener: StepListener): void;
+  connectOutput(destination: InputNode): void;
+  disconnectOutput(): void;
 };
 
 export type Sono303EngineFactory = () => Sono303EngineApi;
@@ -128,6 +130,20 @@ export type Sono303EngineFactory = () => Sono303EngineApi;
 - The engine never calls the listener at any other time; it never emits
   pattern, parameter, or error events.
 
+### `connectOutput(destination: InputNode): void` / `disconnectOutput(): void`
+
+- The engine **never** reaches `Tone.Destination` on its own. It exposes one
+  output bus, and the host decides where it goes.
+- That is what makes an insert effect possible: if the voice also went straight
+  to the destination, the dry signal would sound alongside the processed one
+  and BYPASS would be indistinguishable from active.
+- `connectOutput` may be called more than once to fan out to several
+  destinations; `SonoAudioRig` uses this to feed the dry branch and the effect
+  branch from the same voice.
+- The output bus exists from construction, before `initialize()`, so a host can
+  wire the full path up front and leave the user's first gesture to do nothing
+  but resume the audio context.
+
 ## 5. Timing guarantees
 
 - Step callbacks fire on the **audio clock**. The real engine uses
@@ -194,3 +210,43 @@ mapping `stepListener` back onto a `transport/setCurrentStep` dispatch.
 Both implement `Sono303EngineApi` exactly. Hosts select one via a
 `Sono303EngineFactory`; swapping implementations must never require host
 changes.
+
+## 9. The effect engine — `SonoDistEngineApi`
+
+SONO-DIST (`concept/SONO_DIST_ARCHITECTURE.md`) follows the same rules: no
+React, no DOM, every node created once, and all musical decisions delegated to
+pure functions the browser is not needed to test.
+
+```ts
+export type SonoDistEngineApi = {
+  readonly input: InputNode;
+  readonly output: InputNode;
+  setDrive(value: number): void;   // 0..1, clamped by the engine
+  setTone(value: number): void;    // 0..1
+  setLevel(value: number): void;   // 0..1
+  setMode(mode: DistortionMode): void;
+  setState(state: SonoDistState): void;
+  connect(destination: InputNode): void;
+  disconnect(): void;
+  dispose(): void;
+};
+```
+
+Contract notes:
+
+- **BYPASS is a real dry path**, an unprocessed `Tone.CrossFade` input — not a
+  drive of zero. Even a gentle curve and a wide-open filter colour the signal.
+- **Mode changes never rebuild the graph.** They swap a curve, an oversampling
+  factor and two gains behind a short dip to the dry path, and a revision
+  counter makes a stale transition abort rather than reinstate the wrong
+  voicing.
+- **Every setter clamps to `0..1`** before mapping, and ramps rather than jumps
+  (20 ms for gains, 20–30 ms for the tone filter).
+- Knob values are kept through BYPASS, so re-engaging a voicing is instant.
+
+| Unit                    | File                              | Purpose |
+| ----------------------- | --------------------------------- | ------- |
+| `distortionCurves.ts`   | `src/audio/distortionCurves.ts`   | Pure transfer curves for CLASSIC / TURBO / O-DRIVE. The character of the module, testable with no AudioContext. |
+| `distortionMapping.ts`  | `src/sequencer/distortionMapping.ts` | Knob → Hz / dB / compensation. Lives in the data model so the UI can print readouts without importing `src/audio/`. |
+| `SonoDistEngine`        | `src/audio/SonoDistEngine.ts`     | The Tone.js graph, smoothing and anti-click mode transitions. |
+| `SonoAudioRig`          | `src/audio/SonoAudioRig.ts`       | Owns instrument + effect + master + limiter, and the only route to `Tone.Destination`. |

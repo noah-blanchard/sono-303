@@ -1,6 +1,7 @@
 import type {
   Pattern,
   Sono303State,
+  SonoDistState,
   Step,
   SynthParameters,
 } from "./types";
@@ -50,6 +51,18 @@ export const parameterRanges = {
   transposeSemitones: { min: -12, max: 12 },
 } as const;
 
+/**
+ * SONO-DIST boot state. The knob positions are the spec's musical defaults, but
+ * the module starts in BYPASS and the cable starts unplugged: the instrument
+ * sounds exactly like a bare SONO-303 until the user patches it in.
+ */
+export const defaultSonoDistState: SonoDistState = {
+  mode: "bypass",
+  drive: 0.38,
+  tone: 0.58,
+  level: 0.67,
+};
+
 export function createDefaultPattern(): Pattern {
   return Array.from({ length: STEP_COUNT }, () => ({ ...defaultStep }));
 }
@@ -63,5 +76,7 @@ export function createInitialState(): Sono303State {
     keyboardOctave: defaultStep.octave,
     parameters: { ...defaultParameters },
     steps: createDefaultPattern(),
+    patched: false,
+    dist: { ...defaultSonoDistState },
   };
 }

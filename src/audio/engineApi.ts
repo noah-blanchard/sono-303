@@ -1,3 +1,4 @@
+import type { InputNode } from "tone";
 import type { Pattern, SynthParameters } from "../sequencer/types";
 
 /**
@@ -25,6 +26,15 @@ export type Sono303EngineApi = {
   setParameters(parameters: SynthParameters): void;
   /** Registers the single step callback, replacing any previous listener. */
   setStepListener(listener: StepListener): void;
+  /**
+   * Routes the instrument's output onward. The engine never reaches
+   * `Tone.Destination` by itself — `SonoAudioRig` owns the only path there, so
+   * an effect can be inserted without the dry signal leaking out alongside it.
+   * May be called more than once to fan out to several destinations.
+   */
+  connectOutput(destination: InputNode): void;
+  /** Detaches every output connection without destroying anything. */
+  disconnectOutput(): void;
 };
 
 export type Sono303EngineFactory = () => Sono303EngineApi;

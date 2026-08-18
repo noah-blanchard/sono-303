@@ -25,7 +25,9 @@ engine contract ([ENGINE_API.md](ENGINE_API.md)).
 sono-303/
 ├── concept/                    # Product spec + visual reference (read-only inputs)
 │   ├── TB303_ARCHITECTURE.md   #   Authoritative product specification
+│   ├── SONO_DIST_ARCHITECTURE.md#  Distortion module specification
 │   ├── concept_art_sono303.png #   Visual target for Milestone 1
+│   ├── dist_concept_art.png    #   Visual target for SONO-DIST
 │   └── concept_art_2.png
 ├── docs/
 │   ├── PLAN.md                 # Milestone plan (M0 docs → M1 UI → M2 engine)
@@ -33,21 +35,28 @@ sono-303/
 │   └── ENGINE_API.md           # UI-agnostic engine contract
 ├── AGENTS.md                   # Guidelines for agent contributors
 ├── src/
-│   ├── audio/                  # Sound engine — NO React imports allowed
+│   ├── audio/                  # Sound engines — NO React imports allowed
 │   │   ├── engineApi.ts        #   Sono303EngineApi interface + factory type
 │   │   ├── MockSono303Engine.ts#   Mock engine (M1 stand-in, zero Tone.js)
 │   │   ├── Sono303Engine.ts    #   Real Tone.js engine (Milestone 2)
-│   │   └── stepLogic.ts        #   Pure per-step musical decisions (M2)
+│   │   ├── stepLogic.ts        #   Pure per-step musical decisions (M2)
+│   │   ├── distEngineApi.ts    #   SonoDistEngineApi interface
+│   │   ├── SonoDistEngine.ts   #   SONO-DIST effect graph + mode transitions
+│   │   ├── distortionCurves.ts #   Pure transfer curves for the three voicings
+│   │   └── SonoAudioRig.ts     #   Owns the whole path and the one route out
 │   ├── sequencer/              # Pure data model — NO React, NO Tone.js
 │   │   ├── types.ts            #   Step, Pattern, SynthParameters, State, Action
 │   │   ├── defaults.ts         #   Default parameters & 16-step pattern
+│   │   ├── distortionMapping.ts#   DRIVE/TONE/LEVEL → Hz, dB, compensation
 │   │   └── pitch.ts            #   Pitch-class / octave / transpose math
 │   ├── state/                  # React state layer
 │   │   ├── sono303Reducer.ts   #   Pure reducer (serializable in/out)
+│   │   ├── sonoDistReducer.ts  #   Pure sub-reducer for the module
 │   │   └── Sono303Context.tsx  #   Provider + state/dispatch hooks
 │   ├── hooks/
-│   │   └── useSono303.ts       #   THE integration seam (engine ↔ reducer)
+│   │   └── useSono303.ts       #   THE integration seam (rig ↔ reducer)
 │   ├── components/             # Presentational React — dispatch only
+│   │   ├── Workbench.tsx       #   Both units + the patch cable between them
 │   │   ├── Sono303Panel.tsx    #   Four-zone instrument layout
 │   │   ├── SoundControls.tsx   #   Zone 1: waveform + knobs
 │   │   ├── TransportControls.tsx#  Zone 2: start/stop, mode, tempo, transpose
@@ -55,10 +64,15 @@ sono-303/
 │   │   ├── StepButton.tsx      #   One step button + A/S indicators
 │   │   ├── StepEditor.tsx      #   Zone 4: selected-step editor
 │   │   ├── MiniKeyboard.tsx    #   Two-octave pitch selector (C1–B2 … C5–B6)
+│   │   ├── SonoDistPanel.tsx   #   SONO-DIST faceplate
+│   │   ├── DistortionModeSelector.tsx# Exclusive four-way voicing selector
+│   │   ├── JackSocket.tsx      #   Panel jack; click/keyboard patch toggle
+│   │   ├── PatchCable.tsx      #   Draggable plug + drawn lead
 │   │   └── RotaryKnob.tsx      #   Accessible reusable knob
 │   ├── styles/
 │   │   ├── tokens.css          #   Design tokens (colors, radii, sizes)
-│   │   └── sono303.css         #   Instrument-specific styling
+│   │   ├── sono303.css         #   Instrument-specific styling
+│   │   └── sono-dist.css       #   Module, jacks and cable styling
 │   ├── App.tsx                 #   Composition root
 │   └── main.tsx                #   Entry: mounts App with provider
 ├── index.html
@@ -79,26 +93,56 @@ flowchart TD
     subgraph SEAM["Integration seam"]
         H[useSono303 hook]
     end
-    subgraph ENGINE["Engine (framework-free)"]
+    subgraph ENGINE["Engines (framework-free)"]
+        RIG[SonoAudioRig<br/>owns the signal path]
         API[engineApi.ts<br/>Sono303EngineApi]
         MOCK[MockSono303Engine]
         REAL[Sono303Engine]
         LOGIC[stepLogic.ts<br/>pure functions]
+        DIST[SonoDistEngine]
+        CURVES[distortionCurves.ts<br/>pure functions]
     end
     subgraph SEQ["Pure data model"]
         T[sequencer/types.ts]
         P[sequencer/pitch.ts]
         D[sequencer/defaults.ts]
+        M[sequencer/distortionMapping.ts]
     end;
 
     CTX --> H
-    H -- setPattern / setParameters / start / stop --> API
+    H -- setPattern / setParameters / start / stop --> RIG
+    H -- dist.setState / setPatched --> RIG
+    RIG --> API
+    RIG --> DIST
     API -- stepListener(stepIndex | null) --> H
     REAL --> LOGIC
+    DIST --> CURVES
+    DIST --> M
+    C --> M
     H -- dispatch transport/setCurrentStep --> R
     R --> T
     LOGIC --> P
 ```
+
+`distortionMapping.ts` sits in the pure data model rather than in `src/audio/`
+precisely so both the effect engine and the knob readouts can use it without
+breaking the components-never-import-audio rule.
+
+### Signal path
+
+Exactly one route reaches `Tone.Destination`, and it is owned by
+`SonoAudioRig`:
+
+```text
+Sono303Engine.output ─┬─► direct  ──────────────────────────┐
+                      │                                     ├─► master ─► limiter(-1) ─► Destination
+                      └─► SonoDistEngine ─────────► patched ┘
+```
+
+Both branches stay connected for the session; the patch cable only cross-ramps
+the two gains, so plugging in cannot click and the dry signal can never leak
+out alongside the processed one. Inside `SonoDistEngine`, BYPASS is a real dry
+path through a `Tone.CrossFade`, not a distortion turned down.
 
 Rules:
 
@@ -122,6 +166,8 @@ type Sono303State = {
   keyboardOctave: number;            // 1..5, lowest octave the keyboard shows
   parameters: SynthParameters;       // 9 synth/transport values
   steps: Step[];                     // ALWAYS exactly 16
+  patched: boolean;                  // is the cable in SONO-DIST?
+  dist: SonoDistState;               // mode + three normalized knobs
 };
 ```
 
@@ -136,6 +182,10 @@ Invariants enforced by the reducer:
 - Step octave clamped to `1..6`: the top window's upper row is octave 6, so a
   pitch can sit one octave above the highest OCT level. Transpose clamped to `±12`.
 - Enabling REST resets `accent` and `slide` to `false` (no hidden state).
+- `dist.drive`, `dist.tone`, `dist.level` clamped to `0..1`; exactly one
+  `dist.mode` at a time. Knob values survive a trip through BYPASS untouched.
+- Whether SONO-DIST is *active* is never stored — it is derived as
+  `patched && dist.mode !== "bypass"`, so it cannot contradict either.
 - Nothing non-serializable (Tone.js nodes, functions) ever enters state.
 
 ## 5. Action catalog
@@ -154,8 +204,14 @@ All reducer actions (`src/sequencer/types.ts`, `Sono303Action`):
 | `step/changeOctave`           | `delta: -1 \| 1`           | moves window (1..5) and selected pitch (1..6) together |
 | `step/toggleAccent`           | —                          | flip accent (no-op while rest) |
 | `step/toggleSlide`            | —                          | flip slide (no-op while rest) |
+| `patch/set`                   | `patched: boolean`         | plug/unplug the cable into SONO-DIST |
+| `dist/setMode`                | `mode`                     | select one voicing, or `bypass` |
+| `dist/setDrive`               | `value: number`            | DRIVE, clamped to `0..1` |
+| `dist/setTone`                | `value: number`            | TONE, clamped to `0..1` |
+| `dist/setLevel`               | `value: number`            | LEVEL, clamped to `0..1` |
 
-Step-editing actions operate on `selectedStep`.
+Step-editing actions operate on `selectedStep`. The four `dist/*` actions are
+delegated to `sonoDistReducer`, which owns the `dist` sub-state.
 
 ## 6. Data flow — two canonical paths
 

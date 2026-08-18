@@ -48,6 +48,26 @@ export type Mode = "play" | "write";
 
 export type TransportState = "started" | "stopped";
 
+/** The four SONO-DIST voicings. `bypass` is a real dry path, not zero drive. */
+export type DistortionMode = "classic" | "turbo" | "overdrive" | "bypass";
+
+/** The three modes that actually shape the signal. */
+export type ActiveDistortionMode = Exclude<DistortionMode, "bypass">;
+
+/**
+ * SONO-DIST state. The three knobs are normalized 0..1 and keep their value
+ * through BYPASS, so re-engaging a mode restores the sound instantly.
+ *
+ * There is deliberately no `active` flag: it is always derived as
+ * `patched && mode !== "bypass"`, so it can never contradict the mode.
+ */
+export type SonoDistState = {
+  mode: DistortionMode;
+  drive: number;
+  tone: number;
+  level: number;
+};
+
 export type Sono303State = {
   mode: Mode;
   transport: TransportState;
@@ -57,6 +77,9 @@ export type Sono303State = {
   keyboardOctave: number;
   parameters: SynthParameters;
   steps: Pattern;
+  /** Whether the patch cable routes SONO-303 through SONO-DIST. */
+  patched: boolean;
+  dist: SonoDistState;
 };
 
 export type Sono303Action =
@@ -69,4 +92,9 @@ export type Sono303Action =
   | { type: "step/setRest"; rest: boolean }
   | { type: "step/changeOctave"; delta: -1 | 1 }
   | { type: "step/toggleAccent" }
-  | { type: "step/toggleSlide" };
+  | { type: "step/toggleSlide" }
+  | { type: "patch/set"; patched: boolean }
+  | { type: "dist/setMode"; mode: DistortionMode }
+  | { type: "dist/setDrive"; value: number }
+  | { type: "dist/setTone"; value: number }
+  | { type: "dist/setLevel"; value: number };
