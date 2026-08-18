@@ -141,6 +141,16 @@ export function sono303Reducer(
           : { ...step, active: true },
       );
 
+    case "step/advance":
+      // Deliberately leaves keyboardOctave alone, for the same reason
+      // `step/setPitch` does: this fires between two key presses while the
+      // user is filling the pattern, and the keyboard must not slide out from
+      // under their finger. Only an explicit `step/select` re-centres it.
+      return {
+        ...state,
+        selectedStep: (state.selectedStep + 1) % STEP_COUNT,
+      };
+
     case "step/changeOctave": {
       // OCT −/+ moves the window and carries the selected step along, so the
       // note keeps its row. Window and pitch clamp separately, which lets the

@@ -213,14 +213,16 @@
   gap: 14px;
 }
 
+/* Kept identical to .dist-brand: the two units are one product family, so the
+   wordmark must be set the same way on both. */
 .brand__name {
   margin: 0;
-  font-size: clamp(1.6rem, 2.6vw, 2.2rem);
+  font-family: var(--font-condensed);
+  font-size: clamp(1.5rem, 3.4vw, 2rem);
   font-weight: 800;
-  font-style: italic;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   color: var(--ink);
-  text-shadow: 0 1px 0 var(--highlight);
+  text-transform: uppercase;
 }
 
 .waveform {

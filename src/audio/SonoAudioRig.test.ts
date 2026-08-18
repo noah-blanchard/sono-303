@@ -72,6 +72,7 @@ function fakeSynth(): Sono303EngineApi {
     setStepListener: vi.fn(),
     connectOutput: vi.fn(),
     disconnectOutput: vi.fn(),
+    previewNote: vi.fn(),
   };
 }
 

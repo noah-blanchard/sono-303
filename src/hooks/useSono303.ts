@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { SonoAudioRig } from "../audio/SonoAudioRig";
 import type { Sono303EngineFactory } from "../audio/engineApi";
+import type { AuditionNote } from "../state/contexts";
 import { useSono303Dispatch, useSono303State } from "../state/hooks";
 
 /**
@@ -10,8 +11,11 @@ import { useSono303Dispatch, useSono303State } from "../state/hooks";
  * safety limiter — pushes serializable state into it, maps its step callback
  * back onto a reducer action, and disposes it on unmount. No other React
  * module may import from `src/audio/`.
+ *
+ * Returns the audition callback, which the host publishes through
+ * `AuditionContext` so panels can sound a note without ever touching the rig.
  */
-export function useSono303(createEngine?: Sono303EngineFactory): void {
+export function useSono303(createEngine?: Sono303EngineFactory): AuditionNote {
   const state = useSono303State();
   const dispatch = useSono303Dispatch();
 
@@ -59,4 +63,10 @@ export function useSono303(createEngine?: Sono303EngineFactory): void {
       rig.synth.stop();
     }
   }, [state.transport]);
+
+  // Stable identity: it reads the rig through the ref, so publishing it in a
+  // context never re-renders the tree.
+  return useCallback((note, octave) => {
+    rigRef.current?.synth.previewNote(note, octave);
+  }, []);
 }

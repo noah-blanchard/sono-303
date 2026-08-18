@@ -1,5 +1,5 @@
 import type { InputNode } from "tone";
-import type { Pattern, SynthParameters } from "../sequencer/types";
+import type { Pattern, PitchClass, SynthParameters } from "../sequencer/types";
 
 /**
  * The engine's only back-channel to a host. Receives the current step index
@@ -26,6 +26,14 @@ export type Sono303EngineApi = {
   setParameters(parameters: SynthParameters): void;
   /** Registers the single step callback, replacing any previous listener. */
   setStepListener(listener: StepListener): void;
+  /**
+   * Sounds one note immediately so the user hears what they just wrote.
+   *
+   * Fire-and-forget: it unlocks audio and initializes on its own, because the
+   * click that triggers it is itself a valid user gesture. It uses a voice of
+   * its own, so auditioning never interrupts a running pattern.
+   */
+  previewNote(note: PitchClass, octave: number): void;
   /**
    * Routes the instrument's output onward. The engine never reaches
    * `Tone.Destination` by itself — `SonoAudioRig` owns the only path there, so

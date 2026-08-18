@@ -83,6 +83,47 @@ describe("sono303Reducer invariants", () => {
     expect(state.keyboardOctave).toBe(4);
   });
 
+  it("advances the selection and wraps at the end of the pattern", () => {
+    let state = stateWith({ selectedStep: 14 });
+    state = sono303Reducer(state, { type: "step/advance" });
+    expect(state.selectedStep).toBe(15);
+    state = sono303Reducer(state, { type: "step/advance" });
+    expect(state.selectedStep).toBe(0);
+  });
+
+  it("never moves the keyboard window while advancing", () => {
+    // The whole point of advancing is writing a run of notes without lifting
+    // your eyes; a window that jumped mid-run would defeat it.
+    const steps = createInitialState().steps.slice();
+    steps[1] = { ...steps[1], octave: 1 };
+    let state = stateWith({ selectedStep: 0, keyboardOctave: 4, steps });
+
+    state = sono303Reducer(state, { type: "step/advance" });
+
+    expect(state.selectedStep).toBe(1);
+    expect(state.keyboardOctave).toBe(4);
+    // An explicit selection still re-centres, as before.
+    state = sono303Reducer(state, { type: "step/select", stepIndex: 1 });
+    expect(state.keyboardOctave).toBe(4);
+    state = sono303Reducer(state, { type: "step/select", stepIndex: 0 });
+    state = sono303Reducer(state, { type: "step/select", stepIndex: 1 });
+    expect(state.keyboardOctave).toBe(1);
+  });
+
+  it("writes a run of notes across consecutive steps", () => {
+    // The StepEditor flow: setPitch then advance, repeated.
+    let state = stateWith({ selectedStep: 0, keyboardOctave: 3 });
+    for (const note of ["C", "E", "G"] as const) {
+      state = sono303Reducer(state, { type: "step/setPitch", note, octave: 3 });
+      state = sono303Reducer(state, { type: "step/advance" });
+    }
+
+    expect(state.steps.slice(0, 3).map((s) => s.note)).toEqual(["C", "E", "G"]);
+    expect(state.steps.slice(0, 3).every((s) => s.active)).toBe(true);
+    expect(state.selectedStep).toBe(3);
+    expect(state.keyboardOctave).toBe(3);
+  });
+
   it("re-centres the window only when the selected step is off screen", () => {
     let state = stateWith({ selectedStep: 0, keyboardOctave: 3 });
 

@@ -56,7 +56,10 @@ anything from the spec's Explicit Non-Goals (§13).
 ## Audio rules
 
 - Audio initializes only from an explicit user gesture.
-- Exactly one synth voice and one sequence exist at a time.
+- Exactly one **sequencer** voice and one sequence exist at a time. The engine
+  also owns one separate audition voice for previewing notes as they are
+  written; it shares the output bus but must never be used by the sequencer,
+  so a preview cannot cut a running pattern.
 - `start()`/`stop()` are idempotent; repeated cycles must not leak nodes or
   create duplicate sequences.
 - `stop()` releases held notes and clears the playhead.

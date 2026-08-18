@@ -3,7 +3,12 @@ import {
   MAX_PITCH_OCTAVE,
   MIN_OCTAVE,
 } from "../sequencer/defaults";
-import { useSono303Dispatch, useSono303State } from "../state/hooks";
+import type { PitchClass } from "../sequencer/types";
+import {
+  useAuditionNote,
+  useSono303Dispatch,
+  useSono303State,
+} from "../state/hooks";
 import { MiniKeyboard } from "./MiniKeyboard";
 
 /**
@@ -14,6 +19,7 @@ import { MiniKeyboard } from "./MiniKeyboard";
 export function StepEditor() {
   const { steps, selectedStep, keyboardOctave, mode } = useSono303State();
   const dispatch = useSono303Dispatch();
+  const auditionNote = useAuditionNote();
 
   const step = steps[selectedStep];
   const locked = mode === "play";
@@ -23,6 +29,19 @@ export function StepEditor() {
   const canLower = keyboardOctave > MIN_OCTAVE || step.octave > MIN_OCTAVE;
   const canRaise =
     keyboardOctave < MAX_OCTAVE || step.octave < MAX_PITCH_OCTAVE;
+
+  /**
+   * Writing a note is one gesture: hear it, store it, move to the next step.
+   *
+   * Advancing is what turns pattern entry into a run of key presses instead of
+   * alternating between the keyboard and the step grid. The keyboard window
+   * deliberately stays put while this happens.
+   */
+  function writeNote(note: PitchClass, octave: number): void {
+    auditionNote(note, octave);
+    dispatch({ type: "step/setPitch", note, octave });
+    dispatch({ type: "step/advance" });
+  }
 
   return (
     <section
@@ -34,9 +53,7 @@ export function StepEditor() {
         octave={step.octave}
         baseOctave={keyboardOctave}
         disabled={locked}
-        onSelect={(note, octave) =>
-          dispatch({ type: "step/setPitch", note, octave })
-        }
+        onSelect={writeNote}
       />
 
       <div className="editor-controls">
