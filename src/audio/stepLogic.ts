@@ -17,6 +17,7 @@ export type StepEvent =
       frequency: null;
       velocity: 0;
       releaseAfter: null;
+      accent: false;
       portamento: 0;
     }
   | {
@@ -24,8 +25,13 @@ export type StepEvent =
       kind: "trigger";
       frequency: number;
       velocity: number;
-      /** Seconds after the step start at which the note releases. */
-      releaseAfter: number;
+      /**
+       * Seconds after the step start at which the note releases, or null when
+       * the gate must stay open because the next step slides in — the slide
+       * target then owns the release.
+       */
+      releaseAfter: number | null;
+      accent: boolean;
       portamento: 0;
     }
   | {
@@ -35,6 +41,7 @@ export type StepEvent =
       velocity: 0;
       /** Null while the slide chain continues; 80% of the step when it ends. */
       releaseAfter: number | null;
+      accent: boolean;
       /** Glide time in seconds: 60% of the step duration. */
       portamento: number;
     };
@@ -51,12 +58,17 @@ export function stepVelocity(step: Step, accentAmount: number): number {
 }
 
 /**
- * True when `prev` legitimately slides into `cur`: the previous step is an
- * active note flagged for slide AND the current step is also active. A slide
- * before a rest is ignored (spec §8).
+ * True when `prev` legitimately slides into `cur`.
+ *
+ * The SLIDE flag lives on the *destination* step: flagging a step means "the
+ * note before me glides into me". A slide is therefore valid only when the
+ * current step is active AND flagged AND its predecessor is an active note.
+ * A slide on a step preceded by a rest has nothing to glide from and is
+ * ignored (spec §8). Callers pass `(cur, next)` to ask the mirror question:
+ * does `cur` hold its gate open into `next`?
  */
 export function isSlideInto(prev: Step, cur: Step): boolean {
-  return prev.active && prev.slide && cur.active;
+  return prev.active && cur.slide && cur.active;
 }
 
 /**
@@ -85,6 +97,7 @@ export function computeStepEvent(
       frequency: null,
       velocity: 0,
       releaseAfter: null,
+      accent: false,
       portamento: 0,
     };
   }
@@ -94,9 +107,11 @@ export function computeStepEvent(
     stepToMidi(cur, params.transposeSemitones),
   );
 
-  // Rules 7–9: hold the gate only while sliding into the next active step.
-  const holdsIntoNext = isSlideInto(cur, next);
-  const releaseAfter = holdsIntoNext ? null : stepDuration * 0.8;
+  // Rules 7–9: hold the gate open whenever the next step slides in, so the
+  // glide happens on a still-sounding note. This applies to freshly triggered
+  // notes just as much as to slid-into ones — a null release here is what
+  // makes "C3 then C3 with SLIDE" read as one long note instead of two.
+  const releaseAfter = isSlideInto(cur, next) ? null : stepDuration * 0.8;
 
   // Rules 4–5: entering through a valid slide glides without retriggering.
   if (isSlideInto(prev, cur)) {
@@ -105,6 +120,7 @@ export function computeStepEvent(
       frequency,
       velocity: 0,
       releaseAfter,
+      accent: cur.accent,
       portamento: stepDuration * 0.6,
     };
   }
@@ -114,7 +130,8 @@ export function computeStepEvent(
     kind: "trigger",
     frequency,
     velocity: stepVelocity(cur, params.accentAmount),
-    releaseAfter: releaseAfter ?? stepDuration * 0.8,
+    releaseAfter,
+    accent: cur.accent,
     portamento: 0,
   };
 }

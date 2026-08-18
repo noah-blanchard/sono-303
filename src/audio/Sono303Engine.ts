@@ -9,6 +9,15 @@ const STEP_INDICES = Array.from({ length: STEP_COUNT }, (_, index) => index);
 /** ENV MOD (0..1) spans five octaves of filter-envelope range. */
 const ENV_MOD_OCTAVE_RANGE = 5;
 
+/** Cutoff (Hz) a full-depth accent adds on top of the normal filter envelope. */
+const ACCENT_MAX_HZ = 4000;
+
+/** Resonance a full-depth accent adds on top of the RESONANCE knob. */
+const ACCENT_MAX_Q = 10;
+
+/** Accent decays this much faster than DECAY, so accented notes pop. */
+const ACCENT_DECAY_RATIO = 0.45;
+
 /**
  * The real SONO-303 sound engine (docs/ENGINE_API.md).
  *
@@ -20,6 +29,21 @@ const ENV_MOD_OCTAVE_RANGE = 5;
 export class Sono303Engine implements Sono303EngineApi {
   #synth: Tone.MonoSynth | null = null;
   #sequence: Tone.Sequence<number> | null = null;
+  /**
+   * Accent bus: a second filter envelope summed into the cutoff.
+   *
+   * `Tone.MonoSynth` drops the note velocity before it reaches its own
+   * `filterEnvelope`, so velocity alone makes an accent only marginally
+   * louder and never brighter. Mutating `filterEnvelope.octaves`/`.decay`
+   * per step is not an option either: those are plain JS properties, not
+   * `Param`s, so they cannot be scheduled at an audio time and would
+   * retroactively jump the cutoff of the note still sounding inside the
+   * lookahead window. This independent envelope is fully schedulable and
+   * rides on top of the synth's own filter envelope, because Web Audio sums
+   * every connection into an AudioParam.
+   */
+  #accentEnv: Tone.Envelope | null = null;
+  #accentDepth: Tone.Multiply | null = null;
   #pattern: Pattern | null = null;
   #parameters: SynthParameters = { ...defaultParameters };
   #listener: StepListener | null = null;
@@ -62,6 +86,16 @@ export class Sono303Engine implements Sono303EngineApi {
       volume: -8,
     }).toDestination();
 
+    this.#accentDepth = new Tone.Multiply(0);
+    this.#accentEnv = new Tone.Envelope({
+      attack: 0.002,
+      decay: defaultParameters.decaySeconds * ACCENT_DECAY_RATIO,
+      sustain: 0,
+      release: 0.05,
+    });
+    this.#accentEnv.connect(this.#accentDepth);
+    this.#accentDepth.connect(this.#synth.filter.frequency);
+
     this.#sequence = new Tone.Sequence<number>(
       (time, stepIndex) => {
         this.#playStep(time, stepIndex);
@@ -96,8 +130,12 @@ export class Sono303Engine implements Sono303EngineApi {
     this.stop();
     this.#sequence?.dispose();
     this.#synth?.dispose();
+    this.#accentEnv?.dispose();
+    this.#accentDepth?.dispose();
     this.#sequence = null;
     this.#synth = null;
+    this.#accentEnv = null;
+    this.#accentDepth = null;
     this.#listener = null;
     this.#pattern = null;
     this.#disposed = true;
@@ -131,8 +169,48 @@ export class Sono303Engine implements Sono303EngineApi {
     synth.volume.rampTo(parameters.volumeDb, 0.05);
     Tone.getTransport().bpm.rampTo(parameters.tempoBpm, 0.05);
 
+    // Accent depth tracks ENV MOD so the two knobs reinforce each other: the
+    // harder the filter envelope already swings, the harder an accent hits.
+    // At accentAmount 0 the factor is 0, so accented steps stay identical to
+    // their neighbours.
+    this.#accentDepth?.factor.rampTo(
+      parameters.accentAmount *
+        ACCENT_MAX_HZ *
+        (0.35 + 0.65 * parameters.envMod),
+      0.02,
+    );
+    if (this.#accentEnv !== null) {
+      this.#accentEnv.decay = parameters.decaySeconds * ACCENT_DECAY_RATIO;
+    }
+
     // Discrete parameters are assigned directly, never ramped.
     synth.oscillator.type = parameters.waveform;
+  }
+
+  /**
+   * Fires the accent hit for one step, scheduled on the audio clock.
+   *
+   * Both the extra filter envelope and the resonance bump are scheduled at
+   * `time`, so they never bleed backwards onto the note currently sounding.
+   * The Q ramp returns to the RESONANCE knob value over the accent decay;
+   * a later knob turn calls `Q.rampTo` in `#applyParameters`, which cancels
+   * whatever is pending and takes over.
+   */
+  #applyAccent(time: number): void {
+    const accentEnv = this.#accentEnv;
+    const synth = this.#synth;
+    if (accentEnv === null || synth === null) return;
+    // ACCENT at 0 means accented steps are indistinguishable from their
+    // neighbours; bail out so we never touch the Q automation timeline.
+    if (this.#parameters.accentAmount === 0) return;
+
+    accentEnv.triggerAttack(time); // sustain 0 ⇒ self-decaying, no release needed
+    const decay = this.#parameters.decaySeconds * ACCENT_DECAY_RATIO;
+    const base = this.#parameters.resonanceQ;
+    const q = synth.filter.Q;
+    q.cancelScheduledValues(time);
+    q.setValueAtTime(base + this.#parameters.accentAmount * ACCENT_MAX_Q, time);
+    q.linearRampToValueAtTime(base, time + decay);
   }
 
   /** Executes one scheduled step on the audio clock (spec §9.1). */
@@ -159,7 +237,11 @@ export class Sono303Engine implements Sono303EngineApi {
       case "trigger":
         synth.portamento = 0;
         synth.triggerAttack(event.frequency, time, event.velocity);
-        synth.triggerRelease(time + event.releaseAfter);
+        // A null release means the next step slides in: leave the gate open so
+        // the glide lands on a sounding note instead of a dying one.
+        if (event.releaseAfter !== null) {
+          synth.triggerRelease(time + event.releaseAfter);
+        }
         break;
       case "slideIn":
         synth.portamento = event.portamento;
@@ -169,6 +251,9 @@ export class Sono303Engine implements Sono303EngineApi {
         }
         break;
     }
+
+    // Accent is independent of the amp gate, so it hits on slid-into notes too.
+    if (event.accent) this.#applyAccent(time);
 
     // Rule 10: the visual playhead follows the audio clock, not a timer.
     const listener = this.#listener;

@@ -289,7 +289,9 @@ Expected behavior for an accented step:
 - Brighter than a normal step
 - More aggressive because its filter envelope is more pronounced
 
-Minimum Tone.js implementation:
+Tone.js implementation, in two parts.
+
+Loudness comes from note velocity:
 
 ```ts
 const normalVelocity = 0.65;
@@ -298,7 +300,37 @@ const velocity = step.accent
   : normalVelocity;
 ```
 
-Pass `velocity` to `triggerAttack`. `Tone.MonoSynth` applies note velocity to its envelopes, which provides a simple amplitude and brightness difference.
+Pass `velocity` to `triggerAttack`. Note that velocity alone is **not** enough:
+`Tone.MonoSynth._triggerEnvelopeAttack` forwards velocity to its amplitude
+envelope but calls `filterEnvelope.triggerAttack(time)` without it, so velocity
+produces no brightness change whatsoever.
+
+Brightness, snap and squelch therefore come from a dedicated **accent bus** that
+the engine owns alongside the synth:
+
+```ts
+const accentDepth = new Tone.Multiply(0);
+const accentEnv = new Tone.Envelope({ attack: 0.002, decay, sustain: 0, release: 0.05 });
+accentEnv.connect(accentDepth);
+accentDepth.connect(synth.filter.frequency);
+```
+
+Web Audio sums every connection into an AudioParam, so this envelope rides on
+top of the synth's own filter envelope without disturbing it. On an accented
+step the engine triggers `accentEnv` and schedules a resonance bump on
+`filter.Q`, both at the step's audio time.
+
+Do **not** implement accent by mutating `filterEnvelope.octaves`, `.decay` or
+`.baseFrequency` per step. Those are plain JS properties, not `Param`s: they
+cannot be scheduled at an audio time, and because the Sequence callback runs
+inside the lookahead window, writing them jumps the cutoff of the note that is
+still sounding.
+
+Parameter interaction: accent depth scales with both the ACCENT knob and ENV MOD,
+so a harder filter envelope also yields a harder accent. The accent envelope
+decays faster than the DECAY knob (roughly 45% of it) so accented notes pop
+rather than sit bright. Accent also applies to notes entered through a slide,
+which never re-attack the amplitude envelope.
 
 Required invariant:
 
@@ -539,7 +571,7 @@ Interaction rules:
 - Disable or visually mute ACCENT and SLIDE while the selected step is a rest. Their stored values should be reset to `false` when REST is enabled to avoid hidden state.
 - `OCT −` and `OCT +` change only the selected step octave and clamp it to the supported range `1` through `5`.
 - `ACCENT` toggles only `step.accent`.
-- `SLIDE` toggles only `step.slide` and means glide from this step into the immediately following active step.
+- `SLIDE` toggles only `step.slide` and means glide into this step from the immediately preceding active step.
 - Editing is available in WRITE mode, including while the transport is running.
 - In PLAY mode, retain the visual state but disable the mini keyboard and all selected-step editing controls.
 
@@ -554,16 +586,20 @@ Responsive layout:
 
 Slide is essential and must be implemented as legato portamento, not as two separately attacked notes.
 
-Define the flag as follows:
+The flag lives on the **destination** step:
 
-> `slide: true` means glide from this step into the immediately following step.
+> `slide: true` means the immediately preceding step glides into this step.
 
-Slide applies only when both the current step and the immediately following step are active. A slide before a rest is ignored.
+So marking step 4 as SLIDE makes step 3 glide into step 4. If both hold the same
+pitch, the pair sounds as one continuous, longer note.
+
+Slide applies only when the flagged step is active AND the step before it is an
+active note. A slide flag on a rest, or on a step preceded by a rest, is ignored.
 
 When slide applies:
 
-- Keep the current note gate open across the step boundary.
-- Glide to the next pitch.
+- Keep the previous note's gate open across the step boundary.
+- Glide to the new pitch.
 - Do not retrigger the amplitude envelope.
 - Do not retrigger the filter envelope.
 
@@ -571,8 +607,14 @@ Suggested behavior:
 
 ```ts
 synth.portamento = stepDurationSeconds * 0.6;
-synth.setNote(nextFrequency, nextStepTime);
+synth.setNote(slideTargetFrequency, slideTargetStepTime);
 ```
+
+Keeping the gate open is the load-bearing part and applies to freshly triggered
+notes too, not just to notes already inside a slide chain. `Monophonic.setNote`
+only glides while `getLevelAtTime(time) > 0.05`; if the source note has been
+released it falls through to `setValueAtTime` — a hard pitch jump — and
+`MonoSynth` will already have scheduled `oscillator.stop`, silencing the target.
 
 When slide does not apply:
 
@@ -613,13 +655,14 @@ For each step callback:
 1. Read the current, previous, and next steps using modulo-16 indices.
 2. If the current step is a rest, release any held note.
 3. Calculate its final pitch using octave and global transpose.
-4. Determine whether the previous step slides into the current step.
+4. Determine whether the previous step slides into the current step, i.e. the current step is flagged and the previous step is an active note.
 5. If entering through a valid slide, change pitch with `setNote` and do not retrigger envelopes.
 6. Otherwise, trigger a new note with the calculated accent velocity.
-7. Determine whether the current step slides into the next step.
-8. If it does, keep the note held.
+7. Determine whether the current step slides into the next step, i.e. the next step is flagged and active.
+8. If it does, keep the note held — schedule no release at all. This applies to both cases above.
 9. Otherwise, schedule release at approximately `80%` of the current step duration.
-10. Schedule the visual current-step update at the supplied audio time.
+10. If the current step is accented, fire the accent bus at the step's audio time.
+11. Schedule the visual current-step update at the supplied audio time.
 
 Use `Tone.Draw.schedule` or an equivalent audio-time-aware UI update for the playback indicator.
 

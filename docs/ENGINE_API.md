@@ -29,7 +29,7 @@ type Step = {
   note: PitchClass;   // "C" | "C#" | "D" | ... | "B"
   octave: number;     // 1..6 (OCT buttons reach 1..5; the keyboard's upper row reaches 6)
   accent: boolean;
-  slide: boolean;     // glide FROM this step INTO the next
+  slide: boolean;     // glide INTO this step FROM the previous one
 };
 
 type Pattern = Step[]; // MUST always contain exactly 16 steps.
@@ -135,7 +135,7 @@ export type Sono303EngineFactory = () => Sono303EngineApi;
 - Parameter changes pushed via `setParameters` are audible on the next
   scheduled note at the latest.
 - The sequence loops 16 → 0 seamlessly, including a slide from step 16
-  into step 1.
+  into step 1 (flag step 1).
 
 ## 6. Lifecycle recipe
 
