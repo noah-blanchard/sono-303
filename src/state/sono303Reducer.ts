@@ -1,5 +1,6 @@
 import {
   MAX_OCTAVE,
+  MAX_PITCH_OCTAVE,
   MIN_OCTAVE,
   STEP_COUNT,
   parameterRanges,
@@ -61,6 +62,16 @@ function updateStep(
 }
 
 /**
+ * Leaves the keyboard window alone while the given pitch is one of the two
+ * octaves on screen, and re-centres on that pitch otherwise. Only selecting a
+ * different step moves the window this way — picking a key never does.
+ */
+function windowFor(octave: number, current: number): number {
+  const onScreen = octave === current || octave === current + 1;
+  return onScreen ? current : clamp(octave, MIN_OCTAVE, MAX_OCTAVE);
+}
+
+/**
  * Pure application reducer. It never performs audio work and never stores
  * anything non-serializable; it is the single owner of the state invariants
  * documented in docs/ARCHITECTURE.md.
@@ -100,16 +111,24 @@ export function sono303Reducer(
     case "step/select": {
       if (!Number.isFinite(action.stepIndex)) return state;
       const selectedStep = clamp(Math.trunc(action.stepIndex), 0, STEP_COUNT - 1);
-      return selectedStep === state.selectedStep
-        ? state
-        : { ...state, selectedStep };
+      if (selectedStep === state.selectedStep) return state;
+      return {
+        ...state,
+        selectedStep,
+        keyboardOctave: windowFor(
+          state.steps[selectedStep].octave,
+          state.keyboardOctave,
+        ),
+      };
     }
 
     case "step/setPitch":
+      // Deliberately leaves keyboardOctave alone: picking a key must never
+      // slide the keyboard out from under the pointer.
       return updateStep(state, state.selectedStep, (step) => {
         const octave =
           typeof action.octave === "number"
-            ? clamp(Math.trunc(action.octave), MIN_OCTAVE, MAX_OCTAVE)
+            ? clamp(Math.trunc(action.octave), MIN_OCTAVE, MAX_PITCH_OCTAVE)
             : step.octave;
         return { ...step, note: action.note, octave, active: true };
       });
@@ -121,11 +140,27 @@ export function sono303Reducer(
           : { ...step, active: true },
       );
 
-    case "step/changeOctave":
-      return updateStep(state, state.selectedStep, (step) => {
-        const octave = clamp(step.octave + action.delta, MIN_OCTAVE, MAX_OCTAVE);
+    case "step/changeOctave": {
+      // OCT −/+ moves the window and carries the selected step along, so the
+      // note keeps its row. Window and pitch clamp separately, which lets the
+      // pitch still reach octave 1 or 6 once the window has hit its end.
+      const keyboardOctave = clamp(
+        state.keyboardOctave + action.delta,
+        MIN_OCTAVE,
+        MAX_OCTAVE,
+      );
+      const next = updateStep(state, state.selectedStep, (step) => {
+        const octave = clamp(
+          step.octave + action.delta,
+          MIN_OCTAVE,
+          MAX_PITCH_OCTAVE,
+        );
         return octave === step.octave ? step : { ...step, octave };
       });
+      return keyboardOctave === state.keyboardOctave
+        ? next
+        : { ...next, keyboardOctave };
+    }
 
     case "step/toggleAccent":
       return updateStep(state, state.selectedStep, (step) =>

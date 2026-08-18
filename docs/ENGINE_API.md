@@ -27,7 +27,7 @@ Canonical source: [src/audio/engineApi.ts](../src/audio/engineApi.ts).
 type Step = {
   active: boolean;
   note: PitchClass;   // "C" | "C#" | "D" | ... | "B"
-  octave: number;     // 1..5
+  octave: number;     // 1..6 (OCT buttons reach 1..5; the keyboard's upper row reaches 6)
   accent: boolean;
   slide: boolean;     // glide FROM this step INTO the next
 };

@@ -7,8 +7,16 @@ import type {
 
 export const STEP_COUNT = 16;
 
+/** OCT −/+ range: the five keyboard levels C1–B2, C2–B3, … C5–B6. */
 export const MIN_OCTAVE = 1;
 export const MAX_OCTAVE = 5;
+
+/**
+ * The keyboard shows two octaves starting at the step's octave, so its upper
+ * row reaches one octave above the top OCT level. Stored pitches may therefore
+ * sit on octave 6 even though OCT + stops at 5.
+ */
+export const MAX_PITCH_OCTAVE = MAX_OCTAVE + 1;
 
 export const defaultStep: Step = {
   active: false,
@@ -52,6 +60,7 @@ export function createInitialState(): Sono303State {
     transport: "stopped",
     selectedStep: 0,
     currentStep: null,
+    keyboardOctave: defaultStep.octave,
     parameters: { ...defaultParameters },
     steps: createDefaultPattern(),
   };

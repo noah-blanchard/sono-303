@@ -43,17 +43,80 @@ describe("sono303Reducer invariants", () => {
     expect(state.selectedStep).toBe(0);
   });
 
-  it("clamps octave to 1..5", () => {
+  it("clamps the OCT buttons to the five keyboard levels", () => {
     let state = stateWith({ selectedStep: 0 });
     for (let i = 0; i < 10; i += 1) {
       state = sono303Reducer(state, { type: "step/changeOctave", delta: 1 });
     }
-    expect(state.steps[0].octave).toBe(5);
+    expect(state.keyboardOctave).toBe(5);
+    expect(state.steps[0].octave).toBe(6);
 
     for (let i = 0; i < 10; i += 1) {
       state = sono303Reducer(state, { type: "step/changeOctave", delta: -1 });
     }
+    expect(state.keyboardOctave).toBe(1);
     expect(state.steps[0].octave).toBe(1);
+  });
+
+  it("carries the selected pitch along with the window", () => {
+    let state = stateWith({ selectedStep: 0, keyboardOctave: 3 });
+    state = sono303Reducer(state, {
+      type: "step/setPitch",
+      note: "C",
+      octave: 4,
+    });
+
+    // C4 sits in the upper row of the C3-B4 window and must stay there.
+    state = sono303Reducer(state, { type: "step/changeOctave", delta: -1 });
+    expect(state.keyboardOctave).toBe(2);
+    expect(state.steps[0].octave).toBe(3);
+  });
+
+  it("never moves the window when a key is picked", () => {
+    let state = stateWith({ selectedStep: 0, keyboardOctave: 4 });
+    state = sono303Reducer(state, {
+      type: "step/setPitch",
+      note: "C",
+      octave: 5,
+    });
+    expect(state.steps[0].octave).toBe(5);
+    expect(state.keyboardOctave).toBe(4);
+  });
+
+  it("re-centres the window only when the selected step is off screen", () => {
+    let state = stateWith({ selectedStep: 0, keyboardOctave: 3 });
+
+    // Every default step is on octave 3, still inside the C3-B4 window.
+    state = sono303Reducer(state, { type: "step/select", stepIndex: 1 });
+    expect(state.keyboardOctave).toBe(3);
+
+    const steps = state.steps.slice();
+    steps[2] = { ...steps[2], octave: 1 };
+    state = sono303Reducer(
+      { ...state, steps },
+      { type: "step/select", stepIndex: 2 },
+    );
+    expect(state.keyboardOctave).toBe(1);
+  });
+
+  it("accepts octave 6 from the keyboard's upper row and clamps beyond it", () => {
+    let state = sono303Reducer(
+      stateWith({ selectedStep: 0, keyboardOctave: 5 }),
+      { type: "step/setPitch", note: "C", octave: 6 },
+    );
+    expect(state.steps[0].octave).toBe(6);
+
+    // Window and pitch are both at their top, so OCT + does nothing.
+    state = sono303Reducer(state, { type: "step/changeOctave", delta: 1 });
+    expect(state.keyboardOctave).toBe(5);
+    expect(state.steps[0].octave).toBe(6);
+
+    state = sono303Reducer(state, {
+      type: "step/setPitch",
+      note: "C",
+      octave: 9,
+    });
+    expect(state.steps[0].octave).toBe(6);
   });
 
   it("clamps transpose to ±12 and rounds it", () => {

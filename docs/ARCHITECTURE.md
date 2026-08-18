@@ -54,7 +54,7 @@ sono-303/
 │   │   ├── StepSequencer.tsx   #   Zone 3: 16-step grid
 │   │   ├── StepButton.tsx      #   One step button + A/S indicators
 │   │   ├── StepEditor.tsx      #   Zone 4: selected-step editor
-│   │   ├── MiniKeyboard.tsx    #   One-octave pitch selector
+│   │   ├── MiniKeyboard.tsx    #   Two-octave pitch selector (C1–B2 … C5–B6)
 │   │   └── RotaryKnob.tsx      #   Accessible reusable knob
 │   ├── styles/
 │   │   ├── tokens.css          #   Design tokens (colors, radii, sizes)
@@ -119,6 +119,7 @@ type Sono303State = {
   transport: "started" | "stopped";
   selectedStep: number;              // 0..15
   currentStep: number | null;        // playhead, null when stopped
+  keyboardOctave: number;            // 1..5, lowest octave the keyboard shows
   parameters: SynthParameters;       // 9 synth/transport values
   steps: Step[];                     // ALWAYS exactly 16
 };
@@ -129,7 +130,11 @@ Invariants enforced by the reducer:
 - `steps.length === 16` at all times.
 - `selectedStep` clamped to `0..15`; `currentStep` is `null` or `0..15`.
 - `envMod`, `accentAmount` clamped to `0..1`.
-- Step octave clamped to `1..5`; transpose clamped to `±12`.
+- `keyboardOctave` clamped to `1..5` — the five two-octave windows C1–B2, C2–B3,
+  … C5–B6. It moves on OCT −/+ and when a newly selected step's pitch is off
+  screen; picking a key never moves it.
+- Step octave clamped to `1..6`: the top window's upper row is octave 6, so a
+  pitch can sit one octave above the highest OCT level. Transpose clamped to `±12`.
 - Enabling REST resets `accent` and `slide` to `false` (no hidden state).
 - Nothing non-serializable (Tone.js nodes, functions) ever enters state.
 
@@ -143,10 +148,10 @@ All reducer actions (`src/sequencer/types.ts`, `Sono303Action`):
 | `transport/setCurrentStep`    | `stepIndex: number \| null`| move/clear playhead |
 | `mode/set`                    | `"play" \| "write"`        | switch mode (never touches transport) |
 | `parameter/set`               | `key`, `value`             | set one `SynthParameters` field |
-| `step/select`                 | `stepIndex`                | choose step 0..15 |
-| `step/setPitch`               | `note: PitchClass`         | set note + `active = true` |
+| `step/select`                 | `stepIndex`                | choose step 0..15; re-centres the keyboard window if that step is off screen |
+| `step/setPitch`               | `note`, `octave?`          | set note + `active = true`; never moves the window |
 | `step/setRest`                | `rest: boolean`            | rest on/off; on ⇒ clears accent+slide |
-| `step/changeOctave`           | `delta: -1 \| 1`           | clamp 1..5 |
+| `step/changeOctave`           | `delta: -1 \| 1`           | moves window (1..5) and selected pitch (1..6) together |
 | `step/toggleAccent`           | —                          | flip accent (no-op while rest) |
 | `step/toggleSlide`            | —                          | flip slide (no-op while rest) |
 

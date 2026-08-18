@@ -53,6 +53,8 @@ export type Sono303State = {
   transport: TransportState;
   selectedStep: number;
   currentStep: number | null;
+  /** Lowest of the two octaves the mini keyboard shows; moved only by OCT −/+. */
+  keyboardOctave: number;
   parameters: SynthParameters;
   steps: Pattern;
 };

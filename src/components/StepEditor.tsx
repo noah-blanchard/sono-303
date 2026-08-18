@@ -1,4 +1,8 @@
-import { MAX_OCTAVE, MIN_OCTAVE } from "../sequencer/defaults";
+import {
+  MAX_OCTAVE,
+  MAX_PITCH_OCTAVE,
+  MIN_OCTAVE,
+} from "../sequencer/defaults";
 import { useSono303Dispatch, useSono303State } from "../state/hooks";
 import { MiniKeyboard } from "./MiniKeyboard";
 
@@ -8,12 +12,17 @@ import { MiniKeyboard } from "./MiniKeyboard";
  * step is a rest.
  */
 export function StepEditor() {
-  const { steps, selectedStep, mode } = useSono303State();
+  const { steps, selectedStep, keyboardOctave, mode } = useSono303State();
   const dispatch = useSono303Dispatch();
 
   const step = steps[selectedStep];
   const locked = mode === "play";
   const flagsLocked = locked || !step.active;
+  // OCT −/+ moves the window and the pitch together, so it stays useful until
+  // both have hit the same end.
+  const canLower = keyboardOctave > MIN_OCTAVE || step.octave > MIN_OCTAVE;
+  const canRaise =
+    keyboardOctave < MAX_OCTAVE || step.octave < MAX_PITCH_OCTAVE;
 
   return (
     <section
@@ -23,6 +32,7 @@ export function StepEditor() {
       <MiniKeyboard
         note={step.note}
         octave={step.octave}
+        baseOctave={keyboardOctave}
         disabled={locked}
         onSelect={(note, octave) =>
           dispatch({ type: "step/setPitch", note, octave })
@@ -58,7 +68,7 @@ export function StepEditor() {
               type="button"
               className="panel-button"
               aria-label="Lower the octave of the selected step"
-              disabled={locked || step.octave <= MIN_OCTAVE}
+              disabled={locked || !canLower}
               onClick={() => dispatch({ type: "step/changeOctave", delta: -1 })}
             >
               −
@@ -67,7 +77,7 @@ export function StepEditor() {
               type="button"
               className="panel-button"
               aria-label="Raise the octave of the selected step"
-              disabled={locked || step.octave >= MAX_OCTAVE}
+              disabled={locked || !canRaise}
               onClick={() => dispatch({ type: "step/changeOctave", delta: 1 })}
             >
               +
@@ -76,15 +86,15 @@ export function StepEditor() {
           <div
             className="octave-meter"
             role="meter"
-            aria-label={`Octave ${step.octave} of ${MAX_OCTAVE}`}
+            aria-label={`Keyboard octave ${keyboardOctave} of ${MAX_OCTAVE}`}
             aria-valuemin={MIN_OCTAVE}
             aria-valuemax={MAX_OCTAVE}
-            aria-valuenow={step.octave}
+            aria-valuenow={keyboardOctave}
           >
             {Array.from({ length: MAX_OCTAVE }, (_, i) => (
               <span
                 key={i + 1}
-                className={`led led--small${i + 1 === step.octave ? " is-on" : ""}`}
+                className={`led led--small${i + 1 === keyboardOctave ? " is-on" : ""}`}
                 aria-hidden="true"
               />
             ))}

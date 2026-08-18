@@ -20,13 +20,12 @@ const BLACK_OFFSETS: ReadonlyArray<readonly [PitchClass, number]> = [
 ];
 
 /**
- * The two visible octaves follow the selected step's octave: the keyboard
- * shows `octave − 1` and `octave`, clamped so the window always stays inside
- * the legal 1..5 range. OCT −/+ therefore shifts the key labels.
+ * The two visible octaves start at the window the OCT buttons point at, so
+ * each level owns a distinct span: 1 → C1–B2, 2 → C2–B3, … 5 → C5–B6.
  */
-function visibleOctaves(currentOctave: number): readonly [number, number] {
-  const highest = Math.min(MAX_OCTAVE, Math.max(MIN_OCTAVE + 1, currentOctave));
-  return [highest - 1, highest];
+function visibleOctaves(baseOctave: number): readonly [number, number] {
+  const lowest = Math.min(MAX_OCTAVE, Math.max(MIN_OCTAVE, baseOctave));
+  return [lowest, lowest + 1];
 }
 
 function buildKeys(octaves: readonly [number, number]): {
@@ -57,18 +56,28 @@ function keyLabel(note: PitchClass, octave: number): string {
 }
 
 export type MiniKeyboardProps = {
+  /** Pitch of the selected step, highlighted when it falls inside the window. */
   note: PitchClass;
   octave: number;
+  /** Lowest of the two octaves on screen. */
+  baseOctave: number;
   disabled: boolean;
   onSelect: (note: PitchClass, octave: number) => void;
 };
 
 /**
  * Two-octave (24 semitone) chromatic pitch selector. It only assigns a pitch
- * class and octave to the selected step — it is never a playable voice.
+ * class and octave to the selected step — it is never a playable voice, and
+ * picking a key never scrolls the window.
  */
-export function MiniKeyboard({ note, octave, disabled, onSelect }: MiniKeyboardProps) {
-  const { whites, blacks } = buildKeys(visibleOctaves(octave));
+export function MiniKeyboard({
+  note,
+  octave,
+  baseOctave,
+  disabled,
+  onSelect,
+}: MiniKeyboardProps) {
+  const { whites, blacks } = buildKeys(visibleOctaves(baseOctave));
 
   function renderKey(key: Key, variant: "white" | "black") {
     const selected = key.note === note && key.octave === octave;
