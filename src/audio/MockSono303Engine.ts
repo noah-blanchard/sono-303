@@ -67,12 +67,15 @@ export class MockSono303Engine implements Sono303EngineApi {
   }
 
   /**
-   * No-ops: a silent engine has nothing to route. They exist so the mock still
-   * satisfies the contract and can be dropped into `SonoAudioRig` unchanged.
+   * No-ops: a silent engine has nothing to route and nothing to audition.
+   * They exist so the mock still satisfies the contract and can be dropped
+   * into `SonoAudioRig` unchanged.
    */
   connectOutput(): void {}
 
   disconnectOutput(): void {}
+
+  previewNote(): void {}
 
   /** The pattern the real engine will read on every step callback. */
   getPattern(): Pattern | null {

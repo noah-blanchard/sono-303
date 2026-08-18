@@ -90,6 +90,7 @@ export type Sono303Action =
   | { type: "step/select"; stepIndex: number }
   | { type: "step/setPitch"; note: PitchClass; octave?: number }
   | { type: "step/setRest"; rest: boolean }
+  | { type: "step/advance" }
   | { type: "step/changeOctave"; delta: -1 | 1 }
   | { type: "step/toggleAccent" }
   | { type: "step/toggleSlide" }

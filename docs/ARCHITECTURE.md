@@ -201,6 +201,7 @@ All reducer actions (`src/sequencer/types.ts`, `Sono303Action`):
 | `step/select`                 | `stepIndex`                | choose step 0..15; re-centres the keyboard window if that step is off screen |
 | `step/setPitch`               | `note`, `octave?`          | set note + `active = true`; never moves the window |
 | `step/setRest`                | `rest: boolean`            | rest on/off; on ⇒ clears accent+slide |
+| `step/advance`                | —                          | select the next step, wrapping 15→0; never moves the keyboard window |
 | `step/changeOctave`           | `delta: -1 \| 1`           | moves window (1..5) and selected pitch (1..6) together |
 | `step/toggleAccent`           | —                          | flip accent (no-op while rest) |
 | `step/toggleSlide`            | —                          | flip slide (no-op while rest) |

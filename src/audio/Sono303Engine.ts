@@ -1,10 +1,40 @@
 import * as Tone from "tone";
 import { STEP_COUNT, defaultParameters } from "../sequencer/defaults";
-import type { Pattern, SynthParameters } from "../sequencer/types";
+import { midiToFrequency, pitchClassToSemitone } from "../sequencer/pitch";
+import type { Pattern, PitchClass, SynthParameters } from "../sequencer/types";
 import type { Sono303EngineApi, StepListener } from "./engineApi";
 import { computeStepEvent, stepDurationSeconds } from "./stepLogic";
 
 const STEP_INDICES = Array.from({ length: STEP_COUNT }, (_, index) => index);
+
+/** Spec §5 voice configuration, verbatim. Fresh object per voice. */
+function voiceOptions() {
+  return {
+    oscillator: {
+      type: "sawtooth",
+    },
+    filter: {
+      type: "lowpass",
+      rolloff: -24,
+      Q: 8,
+    },
+    envelope: {
+      attack: 0.003,
+      decay: 0.05,
+      sustain: 0.8,
+      release: 0.03,
+    },
+    filterEnvelope: {
+      attack: 0.003,
+      decay: 0.3,
+      sustain: 0,
+      release: 0.05,
+      baseFrequency: 350,
+      octaves: 3.25,
+    },
+    volume: -8,
+  } as const;
+}
 
 /** ENV MOD (0..1) spans five octaves of filter-envelope range. */
 const ENV_MOD_OCTAVE_RANGE = 5;
@@ -17,6 +47,13 @@ const ACCENT_MAX_Q = 10;
 
 /** Accent decays this much faster than DECAY, so accented notes pop. */
 const ACCENT_DECAY_RATIO = 0.45;
+
+/**
+ * Shortest audible audition, in seconds. A sixteenth at a fast tempo is barely
+ * a blip, so previews get a floor — long enough to judge the pitch, short
+ * enough to keep up with someone typing in a pattern.
+ */
+const MIN_PREVIEW_SECONDS = 0.18;
 
 /**
  * The real SONO-303 sound engine (docs/ENGINE_API.md).
@@ -35,6 +72,8 @@ export class Sono303Engine implements Sono303EngineApi {
   readonly output = new Tone.Gain(1);
 
   #synth: Tone.MonoSynth | null = null;
+  /** Audition voice — see `initialize()`. Never touched by the sequencer. */
+  #previewSynth: Tone.MonoSynth | null = null;
   #sequence: Tone.Sequence<number> | null = null;
   /**
    * Accent bus: a second filter envelope summed into the cutoff.
@@ -66,35 +105,17 @@ export class Sono303Engine implements Sono303EngineApi {
   async initialize(): Promise<void> {
     if (this.#disposed || this.#synth !== null) return;
 
-    // Spec §5 configuration, verbatim.
-    this.#synth = new Tone.MonoSynth({
-      oscillator: {
-        type: "sawtooth",
-      },
-      filter: {
-        type: "lowpass",
-        rolloff: -24,
-        Q: 8,
-      },
-      envelope: {
-        attack: 0.003,
-        decay: 0.05,
-        sustain: 0.8,
-        release: 0.03,
-      },
-      filterEnvelope: {
-        attack: 0.003,
-        decay: 0.3,
-        sustain: 0,
-        release: 0.05,
-        baseFrequency: 350,
-        octaves: 3.25,
-      },
-      volume: -8,
-    });
+    this.#synth = new Tone.MonoSynth(voiceOptions());
     // Never `.toDestination()`: the voice feeds the rig's output bus, which is
     // what lets SONO-DIST sit in the path without the dry signal doubling it.
     this.#synth.connect(this.output);
+
+    // A second, identical voice used only for auditioning notes as they are
+    // written. It shares the output bus — so previews are heard through
+    // SONO-DIST exactly as the step will be — but not the sequencer's voice,
+    // which would otherwise be stolen mid-pattern on every key press.
+    this.#previewSynth = new Tone.MonoSynth(voiceOptions());
+    this.#previewSynth.connect(this.output);
 
     this.#accentDepth = new Tone.Multiply(0);
     this.#accentEnv = new Tone.Envelope({
@@ -150,11 +171,13 @@ export class Sono303Engine implements Sono303EngineApi {
     this.stop();
     this.#sequence?.dispose();
     this.#synth?.dispose();
+    this.#previewSynth?.dispose();
     this.#accentEnv?.dispose();
     this.#accentDepth?.dispose();
     this.output.dispose();
     this.#sequence = null;
     this.#synth = null;
+    this.#previewSynth = null;
     this.#accentEnv = null;
     this.#accentDepth = null;
     this.#listener = null;
@@ -177,17 +200,50 @@ export class Sono303Engine implements Sono303EngineApi {
     this.#listener = listener;
   }
 
+  previewNote(note: PitchClass, octave: number): void {
+    if (this.#disposed) return;
+    // Fire-and-forget: the caller is a click handler, not an async function.
+    void this.#playPreview(note, octave);
+  }
+
+  /**
+   * Sounds one audition note on the preview voice.
+   *
+   * It unlocks and initializes audio itself: the first note a user writes is
+   * often the first gesture of the session, and they should hear it rather
+   * than having to press START once to "arm" the instrument.
+   */
+  async #playPreview(note: PitchClass, octave: number): Promise<void> {
+    await Tone.start();
+    await this.initialize();
+    const synth = this.#previewSynth;
+    if (synth === null || this.#disposed) return;
+
+    // Transposed like playback, so the audition is honest about what the step
+    // will actually sound like.
+    const midi =
+      (octave + 1) * 12 +
+      pitchClassToSemitone(note) +
+      this.#parameters.transposeSemitones;
+    const step = stepDurationSeconds(this.#parameters.tempoBpm);
+    synth.triggerAttackRelease(
+      midiToFrequency(midi),
+      Math.max(MIN_PREVIEW_SECONDS, step * 0.8),
+    );
+  }
+
   /** Applies the full parameter set; no-ops until the synth exists. */
   #applyParameters(parameters: SynthParameters): void {
     const synth = this.#synth;
     if (synth === null || this.#disposed) return;
 
-    // Continuous parameters ramp to avoid zipper noise (spec §12).
-    synth.filterEnvelope.baseFrequency = parameters.cutoffHz;
-    synth.filter.Q.rampTo(parameters.resonanceQ, 0.02);
-    synth.filterEnvelope.decay = parameters.decaySeconds;
-    synth.filterEnvelope.octaves = parameters.envMod * ENV_MOD_OCTAVE_RANGE;
-    synth.volume.rampTo(parameters.volumeDb, 0.05);
+    this.#applyVoiceParameters(synth, parameters);
+    // The audition voice tracks every knob too, so a preview always sounds
+    // like the step it is previewing.
+    if (this.#previewSynth !== null) {
+      this.#applyVoiceParameters(this.#previewSynth, parameters);
+    }
+
     Tone.getTransport().bpm.rampTo(parameters.tempoBpm, 0.05);
 
     // Accent depth tracks ENV MOD so the two knobs reinforce each other: the
@@ -203,6 +259,19 @@ export class Sono303Engine implements Sono303EngineApi {
     if (this.#accentEnv !== null) {
       this.#accentEnv.decay = parameters.decaySeconds * ACCENT_DECAY_RATIO;
     }
+  }
+
+  /** Applies the per-voice half of the parameter set to one synth. */
+  #applyVoiceParameters(
+    synth: Tone.MonoSynth,
+    parameters: SynthParameters,
+  ): void {
+    // Continuous parameters ramp to avoid zipper noise (spec §12).
+    synth.filterEnvelope.baseFrequency = parameters.cutoffHz;
+    synth.filter.Q.rampTo(parameters.resonanceQ, 0.02);
+    synth.filterEnvelope.decay = parameters.decaySeconds;
+    synth.filterEnvelope.octaves = parameters.envMod * ENV_MOD_OCTAVE_RANGE;
+    synth.volume.rampTo(parameters.volumeDb, 0.05);
 
     // Discrete parameters are assigned directly, never ramped.
     synth.oscillator.type = parameters.waveform;

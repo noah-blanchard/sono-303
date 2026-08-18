@@ -65,6 +65,7 @@ const toneMock = vi.hoisted(() => {
     portamento = 0;
     triggerAttack = vi.fn();
     triggerRelease = vi.fn();
+    triggerAttackRelease = vi.fn();
     setNote = vi.fn();
     connect = vi.fn();
     dispose = vi.fn();
@@ -169,6 +170,13 @@ function synth() {
   >;
 }
 
+/** The audition voice, created right after the sequencer voice. */
+function previewSynth() {
+  return toneMock.synthInstances[1] as unknown as InstanceType<
+    typeof toneMock.FakeMonoSynth
+  >;
+}
+
 function accentEnv() {
   return toneMock.envelopeInstances[0];
 }
@@ -191,11 +199,13 @@ beforeEach(() => {
 });
 
 describe("Sono303Engine lifecycle", () => {
-  it("creates exactly one synth and one sequence on initialize", async () => {
+  it("creates one sequencer voice, one audition voice and one sequence", async () => {
     const engine = new Sono303Engine();
     await engine.initialize();
     await engine.initialize();
-    expect(toneMock.synthInstances).toHaveLength(1);
+    // Two voices, never more: the sequencer's and the one used to audition
+    // notes as they are written. Initialization stays idempotent.
+    expect(toneMock.synthInstances).toHaveLength(2);
     expect(toneMock.sequenceInstances).toHaveLength(1);
     expect(toneMock.sequenceInstances[0].events).toHaveLength(16);
     expect(toneMock.sequenceInstances[0].subdivision).toBe("16n");
@@ -208,7 +218,7 @@ describe("Sono303Engine lifecycle", () => {
     await engine.start();
     await engine.start();
     expect(toneMock.start).toHaveBeenCalled();
-    expect(toneMock.synthInstances).toHaveLength(1);
+    expect(toneMock.synthInstances).toHaveLength(2);
     expect(toneMock.transport.start).toHaveBeenCalledTimes(2);
     engine.dispose();
   });
@@ -248,6 +258,103 @@ describe("Sono303Engine lifecycle", () => {
     expect(synth().dispose).toHaveBeenCalledTimes(1);
     expect(toneMock.sequenceInstances[0].dispose).toHaveBeenCalledTimes(1);
     expect(toneMock.gainInstances[0].dispose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Sono303Engine note audition", () => {
+  it("sounds the note on its own voice, unlocking audio on the way", async () => {
+    const engine = new Sono303Engine();
+    engine.previewNote("A", 3);
+    await vi.waitFor(() =>
+      expect(previewSynth().triggerAttackRelease).toHaveBeenCalled(),
+    );
+
+    // A click is a valid user gesture, so the first preview may also be the
+    // moment audio is unlocked — no need to press START first.
+    expect(toneMock.start).toHaveBeenCalled();
+    expect(previewSynth().triggerAttackRelease).toHaveBeenCalledWith(
+      expect.closeTo(220, 1),
+      expect.any(Number),
+    );
+    engine.dispose();
+  });
+
+  it("never disturbs the sequencer voice", async () => {
+    const engine = new Sono303Engine();
+    const pattern = createDefaultPattern();
+    pattern[0] = step({ active: true, note: "C", octave: 3 });
+    engine.setPattern(pattern);
+    await engine.start();
+    playStepAt(0, 1);
+    vi.clearAllMocks();
+
+    engine.previewNote("E", 4);
+    await vi.waitFor(() =>
+      expect(previewSynth().triggerAttackRelease).toHaveBeenCalled(),
+    );
+
+    // Auditioning while a pattern runs must not steal or cut the running note.
+    expect(synth().triggerAttack).not.toHaveBeenCalled();
+    expect(synth().triggerRelease).not.toHaveBeenCalled();
+    expect(synth().triggerAttackRelease).not.toHaveBeenCalled();
+    engine.dispose();
+  });
+
+  it("auditions through the current transposition", async () => {
+    const engine = new Sono303Engine();
+    engine.setParameters({ ...defaultParameters, transposeSemitones: 12 });
+    engine.previewNote("A", 3);
+    await vi.waitFor(() =>
+      expect(previewSynth().triggerAttackRelease).toHaveBeenCalled(),
+    );
+
+    expect(previewSynth().triggerAttackRelease).toHaveBeenCalledWith(
+      expect.closeTo(440, 1),
+      expect.any(Number),
+    );
+    engine.dispose();
+  });
+
+  it("keeps the audition voice long enough to hear at any tempo", async () => {
+    const engine = new Sono303Engine();
+    engine.setParameters({ ...defaultParameters, tempoBpm: 200 });
+    engine.previewNote("C", 3);
+    await vi.waitFor(() =>
+      expect(previewSynth().triggerAttackRelease).toHaveBeenCalled(),
+    );
+
+    // A sixteenth at 200 BPM is 75 ms — below the audible floor, so the
+    // preview is stretched rather than becoming a click.
+    const [, duration] = previewSynth().triggerAttackRelease.mock.calls[0];
+    expect(duration).toBeCloseTo(0.18, 5);
+    engine.dispose();
+  });
+
+  it("tracks the sound knobs so a preview matches the step", async () => {
+    const engine = new Sono303Engine();
+    await engine.initialize();
+    engine.setParameters({
+      ...defaultParameters,
+      waveform: "square",
+      cutoffHz: 900,
+      decaySeconds: 0.7,
+    });
+
+    expect(previewSynth().oscillator.type).toBe("square");
+    expect(previewSynth().filterEnvelope.baseFrequency).toBe(900);
+    expect(previewSynth().filterEnvelope.decay).toBe(0.7);
+    engine.dispose();
+  });
+
+  it("stays silent once disposed", async () => {
+    const engine = new Sono303Engine();
+    await engine.initialize();
+    const voice = previewSynth();
+    engine.dispose();
+    engine.previewNote("C", 3);
+    await Promise.resolve();
+    expect(voice.triggerAttackRelease).not.toHaveBeenCalled();
+    expect(voice.dispose).toHaveBeenCalledTimes(1);
   });
 });
 

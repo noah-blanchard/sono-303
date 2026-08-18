@@ -60,6 +60,7 @@ export type Sono303EngineApi = {
   setPattern(pattern: Pattern): void;
   setParameters(parameters: SynthParameters): void;
   setStepListener(listener: StepListener): void;
+  previewNote(note: PitchClass, octave: number): void;
   connectOutput(destination: InputNode): void;
   disconnectOutput(): void;
 };
@@ -129,6 +130,19 @@ export type Sono303EngineFactory = () => Sono303EngineApi;
 - Called with `null` exactly when playback stops.
 - The engine never calls the listener at any other time; it never emits
   pattern, parameter, or error events.
+
+### `previewNote(note: PitchClass, octave: number): void`
+
+- Sounds one note immediately, so a pitch is heard at the moment it is written.
+- Uses a **separate audition voice**, not the sequencer's. Auditioning while a
+  pattern plays must never steal or cut the running note.
+- That voice shares the output bus, so previews are heard through SONO-DIST
+  exactly as the written step will be, and it tracks every sound knob.
+- Fire-and-forget: it unlocks audio and initializes on its own, because the
+  click that triggers it is itself a valid user gesture. The first note a user
+  writes should sound without pressing START first.
+- Applies the current transposition, and never shorter than 180 ms so a
+  preview stays audible at fast tempos.
 
 ### `connectOutput(destination: InputNode): void` / `disconnectOutput(): void`
 
