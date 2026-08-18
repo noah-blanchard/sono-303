@@ -1,4 +1,40 @@
-# React + TypeScript + Vite
+# SONO-303
+
+A browser-based acid bass synthesizer: one monophonic bass voice, a resonant
+low-pass filter, per-step accent and slide, and a looping 16-step sequencer.
+Built with React, TypeScript, and Tone.js.
+
+## Quickstart
+
+```bash
+bun install
+bun run dev
+```
+
+## Scripts
+
+| Command          | Description                        |
+| ---------------- | ---------------------------------- |
+| `bun run dev`    | Start the Vite development server  |
+| `bun run build`  | Type-check and produce a static build |
+| `bun run lint`   | Run ESLint                         |
+| `bun run preview`| Preview the production build       |
+| `bun test`       | Run unit tests (Vitest, from Milestone 2) |
+
+## Documentation
+
+- [docs/PLAN.md](docs/PLAN.md) — milestone plan (docs → UI → sound engine)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — repo map, module boundaries, state model, data flow
+- [docs/ENGINE_API.md](docs/ENGINE_API.md) — UI-agnostic sound engine contract
+- [AGENTS.md](AGENTS.md) — guidelines for agent contributors
+- [concept/TB303_ARCHITECTURE.md](concept/TB303_ARCHITECTURE.md) — product specification (source of truth)
+
+## Status
+
+See [docs/PLAN.md](docs/PLAN.md) for the milestone roadmap. Sound generation
+lands in Milestone 2; audio only ever starts from an explicit user gesture.
+
+## Old template notes (React + TypeScript + Vite)
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
