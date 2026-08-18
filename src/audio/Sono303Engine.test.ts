@@ -13,6 +13,17 @@ type SequenceCallback = (time: number, stepIndex: number) => void;
 
 const toneMock = vi.hoisted(() => {
   const synthInstances: Array<Record<string, unknown>> = [];
+  const envelopeInstances: Array<{
+    decay: number;
+    triggerAttack: ReturnType<typeof vi.fn>;
+    connect: ReturnType<typeof vi.fn>;
+    dispose: ReturnType<typeof vi.fn>;
+  }> = [];
+  const multiplyInstances: Array<{
+    factor: { rampTo: ReturnType<typeof vi.fn> };
+    connect: ReturnType<typeof vi.fn>;
+    dispose: ReturnType<typeof vi.fn>;
+  }> = [];
   const sequenceInstances: Array<{
     callback: SequenceCallback;
     events: number[];
@@ -24,7 +35,15 @@ const toneMock = vi.hoisted(() => {
 
   class FakeMonoSynth {
     oscillator = { type: "sawtooth" };
-    filter = { Q: { rampTo: vi.fn() } };
+    filter = {
+      Q: {
+        rampTo: vi.fn(),
+        cancelScheduledValues: vi.fn(),
+        setValueAtTime: vi.fn(),
+        linearRampToValueAtTime: vi.fn(),
+      },
+      frequency: { name: "filter.frequency" },
+    };
     filterEnvelope = {
       baseFrequency: 350,
       decay: 0.3,
@@ -43,6 +62,28 @@ const toneMock = vi.hoisted(() => {
     constructor(options: unknown) {
       this.options = options;
       synthInstances.push(this as unknown as Record<string, unknown>);
+    }
+  }
+
+  class FakeEnvelope {
+    decay: number;
+    triggerAttack = vi.fn();
+    connect = vi.fn();
+    dispose = vi.fn();
+    constructor(options: { decay: number }) {
+      this.decay = options.decay;
+      envelopeInstances.push(this);
+    }
+  }
+
+  class FakeMultiply {
+    factor = { rampTo: vi.fn() };
+    connect = vi.fn();
+    dispose = vi.fn();
+    value: number;
+    constructor(value: number) {
+      this.value = value;
+      multiplyInstances.push(this);
     }
   }
 
@@ -67,8 +108,12 @@ const toneMock = vi.hoisted(() => {
 
   return {
     synthInstances,
+    envelopeInstances,
+    multiplyInstances,
     sequenceInstances,
     FakeMonoSynth,
+    FakeEnvelope,
+    FakeMultiply,
     FakeSequence,
     transport: {
       start: vi.fn(),
@@ -82,6 +127,8 @@ const toneMock = vi.hoisted(() => {
 
 vi.mock("tone", () => ({
   MonoSynth: toneMock.FakeMonoSynth,
+  Envelope: toneMock.FakeEnvelope,
+  Multiply: toneMock.FakeMultiply,
   Sequence: toneMock.FakeSequence,
   getTransport: () => toneMock.transport,
   getDraw: () => toneMock.draw,
@@ -108,12 +155,22 @@ function synth() {
   >;
 }
 
+function accentEnv() {
+  return toneMock.envelopeInstances[0];
+}
+
+function accentDepth() {
+  return toneMock.multiplyInstances[0];
+}
+
 function playStepAt(index: number, time = 0.5) {
   toneMock.sequenceInstances[0].callback(time, index);
 }
 
 beforeEach(() => {
   toneMock.synthInstances.length = 0;
+  toneMock.envelopeInstances.length = 0;
+  toneMock.multiplyInstances.length = 0;
   toneMock.sequenceInstances.length = 0;
   vi.clearAllMocks();
 });
@@ -216,24 +273,52 @@ describe("Sono303Engine playback", () => {
   it("slides with setNote and no retrigger across a slide chain", async () => {
     const engine = new Sono303Engine();
     const pattern = createDefaultPattern();
-    pattern[0] = step({ active: true, note: "C", octave: 3, slide: true });
-    pattern[1] = step({ active: true, note: "E", octave: 3 });
+    // The SLIDE flag sits on the destination: step 1 pulls step 0 into it.
+    pattern[0] = step({ active: true, note: "C", octave: 3 });
+    pattern[1] = step({ active: true, note: "E", octave: 3, slide: true });
     engine.setPattern(pattern);
     engine.setParameters({ ...defaultParameters, tempoBpm: 120 });
     await engine.start();
 
     playStepAt(0, 0);
+    // Step 0 triggers and must hold its gate open — asserted before step 1
+    // runs, so a spurious early release cannot hide behind a later call.
+    expect(synth().triggerAttack).toHaveBeenCalledTimes(1);
+    expect(synth().triggerRelease).not.toHaveBeenCalled();
+
     playStepAt(1, 0.125);
 
     const duration = 60 / 120 / 4;
-    // Step 0 triggers normally and holds (slide into step 1).
-    expect(synth().triggerAttack).toHaveBeenCalledTimes(1);
     // Step 1 glides in: setNote with portamento, no second attack.
+    expect(synth().triggerAttack).toHaveBeenCalledTimes(1);
     expect(synth().setNote).toHaveBeenCalledWith(expect.closeTo(164.81, 1), 0.125);
     expect(synth().portamento).toBeCloseTo(duration * 0.6);
-    // The chain ends at step 1 (step 2 is a rest) ⇒ release at 80%.
+    // The chain ends at step 1 (step 2 is a rest) ⇒ exactly one release, at 80%.
+    expect(synth().triggerRelease).toHaveBeenCalledTimes(1);
     expect(synth().triggerRelease).toHaveBeenCalledWith(
       expect.closeTo(0.125 + duration * 0.8),
+    );
+    engine.dispose();
+  });
+
+  it("holds one continuous note when a slide targets the same pitch", async () => {
+    const engine = new Sono303Engine();
+    const pattern = createDefaultPattern();
+    pattern[2] = step({ active: true, note: "C", octave: 3 });
+    pattern[3] = step({ active: true, note: "C", octave: 3, slide: true });
+    engine.setPattern(pattern);
+    engine.setParameters({ ...defaultParameters, tempoBpm: 120 });
+    await engine.start();
+
+    playStepAt(2, 0.25);
+    playStepAt(3, 0.375);
+
+    // One attack total and no release until the chain ends: the two steps sound
+    // as a single sustained C3.
+    expect(synth().triggerAttack).toHaveBeenCalledTimes(1);
+    expect(synth().triggerRelease).toHaveBeenCalledTimes(1);
+    expect(synth().triggerRelease).toHaveBeenCalledWith(
+      expect.closeTo(0.375 + (60 / 120 / 4) * 0.8),
     );
     engine.dispose();
   });
@@ -241,8 +326,8 @@ describe("Sono303Engine playback", () => {
   it("slides across the 16→1 loop boundary", async () => {
     const engine = new Sono303Engine();
     const pattern = createDefaultPattern();
-    pattern[15] = step({ active: true, note: "C", octave: 3, slide: true });
-    pattern[0] = step({ active: true, note: "G", octave: 2 });
+    pattern[15] = step({ active: true, note: "C", octave: 3 });
+    pattern[0] = step({ active: true, note: "G", octave: 2, slide: true });
     engine.setPattern(pattern);
     await engine.start();
 
@@ -251,6 +336,119 @@ describe("Sono303Engine playback", () => {
 
     expect(synth().triggerAttack).toHaveBeenCalledTimes(1);
     expect(synth().setNote).toHaveBeenCalledWith(expect.closeTo(98.0, 1), 2);
+    engine.dispose();
+  });
+
+  it("ignores a slide flag when the previous step is a rest", async () => {
+    const engine = new Sono303Engine();
+    const pattern = createDefaultPattern();
+    pattern[1] = step({ active: true, note: "E", octave: 3, slide: true });
+    engine.setPattern(pattern);
+    await engine.start();
+
+    playStepAt(1, 0.125);
+
+    expect(synth().triggerAttack).toHaveBeenCalledTimes(1);
+    expect(synth().setNote).not.toHaveBeenCalled();
+    engine.dispose();
+  });
+});
+
+describe("Sono303Engine accent", () => {
+  it("fires the accent envelope and a resonance bump on accented steps", async () => {
+    const engine = new Sono303Engine();
+    const pattern = createDefaultPattern();
+    pattern[0] = step({ active: true, note: "C", octave: 3, accent: true });
+    engine.setPattern(pattern);
+    engine.setParameters(defaultParameters);
+    await engine.start();
+
+    playStepAt(0, 1);
+
+    expect(accentEnv().triggerAttack).toHaveBeenCalledWith(1);
+    const accentDecay = defaultParameters.decaySeconds * 0.45;
+    const q = synth().filter.Q;
+    expect(q.setValueAtTime).toHaveBeenCalledWith(
+      defaultParameters.resonanceQ + defaultParameters.accentAmount * 10,
+      1,
+    );
+    expect(q.linearRampToValueAtTime).toHaveBeenCalledWith(
+      defaultParameters.resonanceQ,
+      expect.closeTo(1 + accentDecay),
+    );
+    engine.dispose();
+  });
+
+  it("leaves unaccented steps untouched", async () => {
+    const engine = new Sono303Engine();
+    const pattern = createDefaultPattern();
+    pattern[0] = step({ active: true, note: "C", octave: 3 });
+    engine.setPattern(pattern);
+    await engine.start();
+
+    playStepAt(0, 1);
+
+    expect(accentEnv().triggerAttack).not.toHaveBeenCalled();
+    expect(synth().filter.Q.setValueAtTime).not.toHaveBeenCalled();
+    engine.dispose();
+  });
+
+  it("accents a slid-into note even though it never re-attacks", async () => {
+    const engine = new Sono303Engine();
+    const pattern = createDefaultPattern();
+    pattern[0] = step({ active: true, note: "C", octave: 3 });
+    pattern[1] = step({ active: true, note: "E", octave: 3, slide: true, accent: true });
+    engine.setPattern(pattern);
+    await engine.start();
+
+    playStepAt(0, 0);
+    playStepAt(1, 0.12);
+
+    expect(synth().triggerAttack).toHaveBeenCalledTimes(1);
+    expect(accentEnv().triggerAttack).toHaveBeenCalledWith(0.12);
+    engine.dispose();
+  });
+
+  it("scales accent depth with ACCENT and ENV MOD, and is a no-op at zero", async () => {
+    const engine = new Sono303Engine();
+    await engine.start();
+
+    engine.setParameters({
+      ...defaultParameters,
+      accentAmount: 1,
+      envMod: 1,
+    });
+    expect(accentDepth().factor.rampTo).toHaveBeenLastCalledWith(
+      expect.closeTo(4000),
+      0.02,
+    );
+
+    engine.setParameters({ ...defaultParameters, accentAmount: 0 });
+    expect(accentDepth().factor.rampTo).toHaveBeenLastCalledWith(0, 0.02);
+    engine.dispose();
+  });
+
+  it("does not touch the accent path at all when ACCENT is 0", async () => {
+    const engine = new Sono303Engine();
+    const pattern = createDefaultPattern();
+    pattern[0] = step({ active: true, note: "C", octave: 3, accent: true });
+    engine.setPattern(pattern);
+    engine.setParameters({ ...defaultParameters, accentAmount: 0 });
+    await engine.start();
+
+    playStepAt(0, 1);
+
+    expect(accentEnv().triggerAttack).not.toHaveBeenCalled();
+    expect(synth().filter.Q.cancelScheduledValues).not.toHaveBeenCalled();
+    engine.dispose();
+  });
+
+  it("shortens the accent decay relative to DECAY", async () => {
+    const engine = new Sono303Engine();
+    await engine.start();
+
+    engine.setParameters({ ...defaultParameters, decaySeconds: 1 });
+    expect(accentEnv().decay).toBeCloseTo(0.45);
     engine.dispose();
   });
 
