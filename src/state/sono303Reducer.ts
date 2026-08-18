@@ -1,0 +1,141 @@
+import {
+  MAX_OCTAVE,
+  MIN_OCTAVE,
+  STEP_COUNT,
+  parameterRanges,
+} from "../sequencer/defaults";
+import type {
+  Sono303Action,
+  Sono303State,
+  Step,
+  SynthParameters,
+  Waveform,
+} from "../sequencer/types";
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function isWaveform(value: unknown): value is Waveform {
+  return value === "sawtooth" || value === "square";
+}
+
+/**
+ * Coerces one incoming parameter value into its legal range. Unknown or
+ * malformed values leave the current parameters untouched.
+ */
+function applyParameter(
+  parameters: SynthParameters,
+  key: keyof SynthParameters,
+  value: number | string,
+): SynthParameters {
+  if (key === "waveform") {
+    if (!isWaveform(value) || value === parameters.waveform) return parameters;
+    return { ...parameters, waveform: value };
+  }
+
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return parameters;
+
+  const range = parameterRanges[key];
+  let next = clamp(numeric, range.min, range.max);
+  if (key === "transposeSemitones") next = Math.round(next);
+  if (next === parameters[key]) return parameters;
+
+  return { ...parameters, [key]: next };
+}
+
+/** Replaces the step at `index` with the result of `update`. */
+function updateStep(
+  state: Sono303State,
+  index: number,
+  update: (step: Step) => Step,
+): Sono303State {
+  const current = state.steps[index];
+  const next = update(current);
+  if (next === current) return state;
+
+  const steps = state.steps.slice();
+  steps[index] = next;
+  return { ...state, steps };
+}
+
+/**
+ * Pure application reducer. It never performs audio work and never stores
+ * anything non-serializable; it is the single owner of the state invariants
+ * documented in docs/ARCHITECTURE.md.
+ */
+export function sono303Reducer(
+  state: Sono303State,
+  action: Sono303Action,
+): Sono303State {
+  switch (action.type) {
+    case "transport/toggle": {
+      const started = state.transport === "started";
+      return {
+        ...state,
+        transport: started ? "stopped" : "started",
+        currentStep: started ? null : state.currentStep,
+      };
+    }
+
+    case "transport/setCurrentStep": {
+      const { stepIndex } = action;
+      if (stepIndex === null) {
+        return state.currentStep === null ? state : { ...state, currentStep: null };
+      }
+      if (!Number.isFinite(stepIndex)) return state;
+      const currentStep = clamp(Math.trunc(stepIndex), 0, STEP_COUNT - 1);
+      return currentStep === state.currentStep ? state : { ...state, currentStep };
+    }
+
+    case "mode/set":
+      return action.mode === state.mode ? state : { ...state, mode: action.mode };
+
+    case "parameter/set": {
+      const parameters = applyParameter(state.parameters, action.key, action.value);
+      return parameters === state.parameters ? state : { ...state, parameters };
+    }
+
+    case "step/select": {
+      if (!Number.isFinite(action.stepIndex)) return state;
+      const selectedStep = clamp(Math.trunc(action.stepIndex), 0, STEP_COUNT - 1);
+      return selectedStep === state.selectedStep
+        ? state
+        : { ...state, selectedStep };
+    }
+
+    case "step/setPitch":
+      return updateStep(state, state.selectedStep, (step) => ({
+        ...step,
+        note: action.note,
+        active: true,
+      }));
+
+    case "step/setRest":
+      return updateStep(state, state.selectedStep, (step) =>
+        action.rest
+          ? { ...step, active: false, accent: false, slide: false }
+          : { ...step, active: true },
+      );
+
+    case "step/changeOctave":
+      return updateStep(state, state.selectedStep, (step) => {
+        const octave = clamp(step.octave + action.delta, MIN_OCTAVE, MAX_OCTAVE);
+        return octave === step.octave ? step : { ...step, octave };
+      });
+
+    case "step/toggleAccent":
+      return updateStep(state, state.selectedStep, (step) =>
+        step.active ? { ...step, accent: !step.accent } : step,
+      );
+
+    case "step/toggleSlide":
+      return updateStep(state, state.selectedStep, (step) =>
+        step.active ? { ...step, slide: !step.slide } : step,
+      );
+
+    default:
+      return state;
+  }
+}

@@ -1,0 +1,52 @@
+/* Design tokens. Every colour used by the instrument is defined here. */
+
+:root {
+  /* Palette (concept/TB303_ARCHITECTURE.md §11.6) */
+  --page-bg: #eef1f3;
+  --panel-silver-light: #f2f3f1;
+  --panel-silver: #c9ccca;
+  --panel-silver-dark: #969b9c;
+  --control-face: #d7d8d5;
+  --control-edge: #74797b;
+  --ink: #191b1d;
+  --muted-ink: #555a5d;
+  --inset-dark: #17191a;
+  --accent-red: #d52024;
+  --accent-red-glow: rgb(213 32 36 / 45%);
+  --panel-radius: 10px;
+  --control-radius: 4px;
+  --touch-target: 44px;
+
+  /* Derived surfaces */
+  --bezel-light: #e4e6e4;
+  --bezel-dark: #9ca1a1;
+  --groove: rgb(0 0 0 / 22%);
+  --highlight: rgb(255 255 255 / 70%);
+  --key-white: #f7f8f5;
+  --key-black: #1b1e1f;
+  --display-ink: #f0f3ef;
+
+  /* Metrics */
+  --panel-max-width: 1480px;
+  --zone-padding-block: clamp(14px, 1.6vw, 22px);
+  --zone-padding-inline: clamp(14px, 2vw, 28px);
+  --label-size: 0.6875rem;
+
+  /* Depth */
+  --shadow-panel: 0 24px 48px rgb(0 0 0 / 16%), 0 2px 6px rgb(0 0 0 / 12%);
+  --shadow-control: 0 2px 3px rgb(0 0 0 / 22%);
+  --shadow-control-inset: inset 0 1px 0 rgb(255 255 255 / 60%);
+
+  /* Motion */
+  --transition-fast: 120ms ease;
+
+  /* Type */
+  --font-condensed: "Arial Narrow", "Roboto Condensed", Inter, system-ui, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast: 0ms;
+    --accent-red-glow: rgb(213 32 36 / 20%);
+  }
+}
