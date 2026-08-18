@@ -106,11 +106,13 @@ export function sono303Reducer(
     }
 
     case "step/setPitch":
-      return updateStep(state, state.selectedStep, (step) => ({
-        ...step,
-        note: action.note,
-        active: true,
-      }));
+      return updateStep(state, state.selectedStep, (step) => {
+        const octave =
+          typeof action.octave === "number"
+            ? clamp(Math.trunc(action.octave), MIN_OCTAVE, MAX_OCTAVE)
+            : step.octave;
+        return { ...step, note: action.note, octave, active: true };
+      });
 
     case "step/setRest":
       return updateStep(state, state.selectedStep, (step) =>

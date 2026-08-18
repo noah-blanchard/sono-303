@@ -63,7 +63,7 @@ export type Sono303Action =
   | { type: "mode/set"; mode: Mode }
   | { type: "parameter/set"; key: keyof SynthParameters; value: number | string }
   | { type: "step/select"; stepIndex: number }
-  | { type: "step/setPitch"; note: PitchClass }
+  | { type: "step/setPitch"; note: PitchClass; octave?: number }
   | { type: "step/setRest"; rest: boolean }
   | { type: "step/changeOctave"; delta: -1 | 1 }
   | { type: "step/toggleAccent" }

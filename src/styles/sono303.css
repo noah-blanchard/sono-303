@@ -588,33 +588,32 @@
   opacity: 0.75;
 }
 
-.readout {
-  margin: 0;
-  /* Fixed width: "SELECTED STEP 16 · REST" (longest) always fits, so
-     switching between REST and a note name never shifts the layout. */
-  width: 15.5rem;
-  flex: 0 0 auto;
-  height: 1em;
-  line-height: 1;
-  overflow: hidden;
-  font-size: 0.8125rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-  white-space: nowrap;
-}
-
 .editor-controls {
   display: flex;
   align-items: flex-end;
   gap: clamp(12px, 1.6vw, 26px);
 }
 
+/* Three fixed rows — label / button / LED slot — so every button sits on
+   the same baseline whether or not the control has LEDs below it. */
 .editor-control {
   display: grid;
+  grid-template-rows: auto var(--touch-target) 9px;
+  align-items: center;
   justify-items: center;
   gap: 6px;
+}
+
+.editor-control__octave {
+  display: flex;
+  gap: 8px;
+}
+
+.octave-meter {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ------------------------------------------------------- mini keyboard */
@@ -622,7 +621,9 @@
 .keyboard {
   position: relative;
   height: 132px;
-  width: 336px;
+  /* Stretch across all free space on the left of the editor zone. */
+  flex: 1 1 480px;
+  min-width: 336px;
 }
 
 .keyboard__whites {
@@ -642,12 +643,30 @@
   transition: filter var(--transition-fast);
 }
 
+.key__label {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  user-select: none;
+}
+
 .key--white {
+  position: relative;
   flex: 1;
   border: 1px solid var(--control-edge);
   border-radius: 0 0 3px 3px;
   background: linear-gradient(180deg, #ffffff, var(--key-white) 70%, #d9dcd6);
   box-shadow: inset 0 -4px 6px rgb(0 0 0 / 10%);
+}
+
+.key--white .key__label {
+  color: #2b2e30;
 }
 
 .key--white:hover:not(:disabled) {
@@ -662,15 +681,21 @@
 
 .key--black {
   position: absolute;
-  left: calc(var(--key-position) * (100% / 7) - 15px);
+  left: calc(var(--key-position) * (100% / 14) - 17px);
   top: 0;
-  width: 30px;
+  width: 34px;
   height: 58%;
   border: 1px solid #000;
   border-radius: 0 0 3px 3px;
   background: linear-gradient(180deg, #34393a, var(--key-black) 70%);
   box-shadow: 0 3px 5px rgb(0 0 0 / 40%);
   pointer-events: auto;
+}
+
+.key--black .key__label {
+  color: #f2f3f0;
+  bottom: 5px;
+  font-size: 0.6875rem;
 }
 
 .key--black:hover:not(:disabled) {
@@ -747,7 +772,9 @@
   }
 
   .keyboard {
-    width: min(336px, 88vw);
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
   }
 
   .editor-controls {
