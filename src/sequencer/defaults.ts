@@ -4,6 +4,7 @@ import type {
   SonoDistState,
   Step,
   SynthParameters,
+  TapeState,
 } from "./types";
 
 export const STEP_COUNT = 16;
@@ -63,6 +64,14 @@ export const defaultSonoDistState: SonoDistState = {
   level: 0.67,
 };
 
+/**
+ * SONO-TAPE boot state. One bar is the honest default: it is the phrase the
+ * sequencer actually holds, and a DAW can duplicate the clip from there.
+ */
+export const defaultTapeState: TapeState = {
+  bars: 1,
+};
+
 export function createDefaultPattern(): Pattern {
   return Array.from({ length: STEP_COUNT }, () => ({ ...defaultStep }));
 }
@@ -80,5 +89,6 @@ export function createInitialState(): Sono303State {
     steps: createDefaultPattern(),
     patched: false,
     dist: { ...defaultSonoDistState },
+    tape: { ...defaultTapeState },
   };
 }

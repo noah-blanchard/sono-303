@@ -325,4 +325,29 @@ describe("sono303Reducer live play", () => {
       true,
     );
   });
+
+  it("sets the SONO-TAPE bar count", () => {
+    const initial = createInitialState();
+    expect(initial.tape.bars).toBe(1);
+    expect(sono303Reducer(initial, { type: "tape/setBars", bars: 4 }).tape.bars).toBe(4);
+  });
+
+  it("returns the identical state when the bar count is unchanged", () => {
+    const state = stateWith({ tape: { bars: 8 } });
+    expect(sono303Reducer(state, { type: "tape/setBars", bars: 8 })).toBe(state);
+  });
+
+  it("stops the transport unconditionally and clears the playhead", () => {
+    const running = stateWith({ transport: "started", currentStep: 7 });
+    const stopped = sono303Reducer(running, { type: "transport/stop" });
+    expect(stopped.transport).toBe("stopped");
+    expect(stopped.currentStep).toBeNull();
+  });
+
+  // Unlike `transport/toggle`, stopping an already-stopped transport must never
+  // start it — SONO-TAPE bounces from step 0 and cannot share the clock.
+  it("is idempotent when the transport is already stopped", () => {
+    const state = stateWith({ transport: "stopped" });
+    expect(sono303Reducer(state, { type: "transport/stop" })).toBe(state);
+  });
 });

@@ -41,6 +41,25 @@ export const NoteGateContext = createContext<NoteGate>({
 });
 
 /**
+ * Bounces the current phrase offline and hands the browser a `.wav` download.
+ *
+ * Takes no arguments: the bar count lives in the reducer, and `useSono303`
+ * reads it there, so there is exactly one source of truth for the length.
+ */
+export type WavExport = () => Promise<void>;
+
+/**
+ * Provided by `useSono303`, like the note gate.
+ *
+ * Unlike `NoteGateContext` the fallback throws rather than doing nothing. A
+ * silent no-op would report a successful export with no file on disk, which is
+ * a lie; a panel rendered without an audio host should say EXPORT FAILED.
+ */
+export const WavExportContext = createContext<WavExport>(async () => {
+  throw new Error("Wav export used outside an audio host");
+});
+
+/**
  * Where the browser is in the Web MIDI permission dance.
  *
  * `unsupported` is a first-class state, not an error: Safari has no Web MIDI

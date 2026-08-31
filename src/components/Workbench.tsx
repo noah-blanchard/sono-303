@@ -9,6 +9,9 @@ import { SonoDistPanel } from "./SonoDistPanel";
  *
  * It owns the socket refs because the cable has to measure both units at once
  * to draw itself, and it is the only component that knows where they sit.
+ *
+ * SONO-TAPE is deliberately not here: it is a drawer pulled out of the edge of
+ * the screen, not a unit standing on the bench.
  */
 export function Workbench() {
   const { patched } = useSono303State();

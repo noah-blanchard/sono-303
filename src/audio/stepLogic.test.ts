@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultParameters, defaultStep } from "../sequencer/defaults";
+import { barsToSeconds } from "../sequencer/tape";
+import { STEP_COUNT } from "../sequencer/defaults";
 import type { Step } from "../sequencer/types";
 import {
   computeStepEvent,
@@ -26,6 +28,22 @@ describe("stepDurationSeconds", () => {
     expect(stepDurationSeconds(120)).toBeCloseTo(0.125);
     expect(stepDurationSeconds(60)).toBeCloseTo(0.25);
   });
+
+  /*
+   * SONO-TAPE computes its bounce length in beats, in `src/sequencer/tape.ts`,
+   * because `src/sequencer/` may not import from `src/audio/`. That leaves two
+   * independent expressions of the same musical fact, and if they ever drift
+   * the export silently stops landing on the sequencer's grid. This is the pin.
+   */
+  it.each([60, 125, 137, 200])(
+    "agrees with one bar of SONO-TAPE at %i bpm",
+    (bpm) => {
+      expect(barsToSeconds(1, bpm)).toBeCloseTo(
+        STEP_COUNT * stepDurationSeconds(bpm),
+        12,
+      );
+    },
+  );
 });
 
 describe("stepVelocity", () => {

@@ -91,6 +91,13 @@ export function sono303Reducer(
       };
     }
 
+    // Idempotent, like the engine's own `stop()`: an already-stopped transport
+    // returns the identical object, so the effects watching it never re-fire.
+    case "transport/stop":
+      return state.transport === "stopped"
+        ? state
+        : { ...state, transport: "stopped", currentStep: null };
+
     case "transport/setCurrentStep": {
       const { stepIndex } = action;
       if (stepIndex === null) {
@@ -230,6 +237,13 @@ export function sono303Reducer(
       const dist = sonoDistReducer(state.dist, action);
       return dist === state.dist ? state : { ...state, dist };
     }
+
+    // One field and one action, so no sub-reducer: `sonoDistReducer` earns its
+    // own file because SONO-DIST has four fields and mode logic to enforce.
+    case "tape/setBars":
+      return action.bars === state.tape.bars
+        ? state
+        : { ...state, tape: { bars: action.bars } };
 
     default:
       return state;

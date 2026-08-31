@@ -108,12 +108,15 @@ flowchart TD
         LOGIC[stepLogic.ts<br/>pure functions]
         DIST[SonoDistEngine]
         CURVES[distortionCurves.ts<br/>pure functions]
+        RENDER[renderPattern.ts<br/>offline bounce]
+        WAV[wavEncoder.ts<br/>pure functions]
     end
     subgraph SEQ["Pure data model"]
         T[sequencer/types.ts]
         P[sequencer/pitch.ts]
         D[sequencer/defaults.ts]
         M[sequencer/distortionMapping.ts]
+        TAPE[sequencer/tape.ts]
     end;
 
     CTX --> H
@@ -127,13 +130,46 @@ flowchart TD
     DIST --> M
     C --> M
     H -- dispatch transport/setCurrentStep --> R
+    H -- exportWav --> RENDER
+    RENDER -- builds an offline rig --> RIG
+    RENDER --> TAPE
+    H --> WAV
+    C --> TAPE
     R --> T
     LOGIC --> P
 ```
 
 `distortionMapping.ts` sits in the pure data model rather than in `src/audio/`
 precisely so both the effect engine and the knob readouts can use it without
-breaking the components-never-import-audio rule.
+breaking the components-never-import-audio rule. `tape.ts` is there for the
+same reason: SONO-TAPE prints the bounce duration on the panel, and the
+renderer needs the same number in samples.
+
+### Offline export (SONO-TAPE)
+
+The bounce reuses the entire instrument rather than re-implementing it. Nothing
+in `src/audio/` captures an AudioContext at import time — every touchpoint goes
+through `Tone.getContext()`, `getTransport()` or `getDestination()`, resolved
+when called — so building a **fresh `SonoAudioRig` inside a `Tone.Offline`
+callback** binds the whole graph to an `OfflineAudioContext`, and the rig's one
+route to `Tone.getDestination()` becomes the route into the rendered buffer.
+
+Three constraints fall out of that, all enforced in `renderPattern.ts`:
+
+- **Never `setStepListener` on an offline engine.** The playhead callback goes
+  through `Tone.getDraw()`, which schedules on `requestAnimationFrame`.
+- **Pass the distortion state through the `SonoAudioRig` constructor**, never
+  `dist.setState`. `SonoDistEngine.setMode` cross-fades an active-to-active
+  voicing swap around a real `setTimeout`, which would fire after the render.
+- **Hard-set `transport.bpm.value` after `setParameters`.** The 50 ms tempo ramp
+  from Tone's default 120 integrates into a permanent phase offset that would
+  pull the bounce off the DAW grid.
+
+The file loops seamlessly because the render is deterministic and therefore
+periodic once the parameter ramps settle: `s(t) === s(t + T)` for a pattern pass
+`T`. One extra pass is rendered and discarded, and the kept slice is taken from
+the settled region — so its last sample joins its first exactly as it did
+mid-render, with the previous pass's decay tail already ringing at sample zero.
 
 ### Signal path
 
@@ -157,8 +193,9 @@ Rules:
   only. **Never** from `src/audio/*` and **never** imports `tone`.
 - `src/hooks/useSono303.ts` is the **only** file allowed to import both
   `src/audio/*` and the React layer. It publishes a `NoteGate` through
-  `NoteGateContext`; the note-source hooks reach the instrument through that
-  context, so none of them imports `src/audio/*` either.
+  `NoteGateContext` and a `WavExport` through `WavExportContext`; the note-source
+  hooks and SONO-TAPE reach the instrument through those contexts, so none of
+  them imports `src/audio/*` either.
 - `src/audio/*` never imports React.
 - `src/sequencer/*` imports neither React nor Tone.js.
 - The reducer is a pure function: `(state, action) => state`, no side effects.
@@ -179,8 +216,13 @@ type Sono303State = {
   steps: Step[];                     // ALWAYS exactly 16
   patched: boolean;                  // is the cable in SONO-DIST?
   dist: SonoDistState;               // mode + three normalized knobs
+  tape: TapeState;                   // SONO-TAPE bounce length, 1|2|4|8 bars
 };
 ```
+
+Whether an export is *running* is deliberately absent: it is transient business
+of the panel that displays it, so `SonoTapePanel` keeps it in local state and
+the reducer stays free of side-effect bookkeeping.
 
 ### The two modes
 
@@ -236,6 +278,7 @@ All reducer actions (`src/sequencer/types.ts`, `Sono303Action`):
 | Action                        | Payload                    | Effect |
 | ----------------------------- | -------------------------- | ------ |
 | `transport/toggle`            | —                          | started ↔ stopped |
+| `transport/stop`              | —                          | always stops and clears the playhead; never starts |
 | `transport/setCurrentStep`    | `stepIndex: number \| null`| move/clear playhead |
 | `mode/set`                    | `"play" \| "write"`        | switch mode (never touches transport) |
 | `parameter/set`               | `key`, `value`             | set one `SynthParameters` field |
@@ -251,9 +294,11 @@ All reducer actions (`src/sequencer/types.ts`, `Sono303Action`):
 | `dist/setDrive`               | `value: number`            | DRIVE, clamped to `0..1` |
 | `dist/setTone`                | `value: number`            | TONE, clamped to `0..1` |
 | `dist/setLevel`               | `value: number`            | LEVEL, clamped to `0..1` |
+| `tape/setBars`                | `bars: 1 \| 2 \| 4 \| 8`   | SONO-TAPE bounce length |
 
 Step-editing actions operate on `selectedStep`. The four `dist/*` actions are
-delegated to `sonoDistReducer`, which owns the `dist` sub-state.
+delegated to `sonoDistReducer`, which owns the `dist` sub-state. `tape/setBars`
+is handled inline — one field and one action does not earn a sub-reducer.
 
 ## 6. Data flow — two canonical paths
 

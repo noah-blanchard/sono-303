@@ -1,0 +1,243 @@
+/* SONO-TAPE — the WAV recorder, kept in a drawer at the right edge of the bench.
+   Every colour and metric comes from tokens.css; nothing is hard-coded here.
+   The shell, screws, buttons and LEDs are the shared panel language, so this
+   file only holds what is specific to the recorder. */
+
+/* ----------------------------------------------------------------- drawer */
+
+/* Dims the bench so the drawer is unmistakably the thing in front. No blur:
+   the panel stays readable underneath, and it is cheaper to paint. */
+.tape-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgb(0 0 0 / 55%);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 200ms ease,
+    visibility 0s linear 200ms;
+}
+
+.tape-scrim.is-open {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 200ms ease,
+    visibility 0s;
+}
+
+/* Anchored to the middle of the right edge: the handle is always in the same
+   place, whatever the bench below is doing. */
+.tape-drawer {
+  position: fixed;
+  top: 50%;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  transform: translateY(-50%);
+  /* Only the handle and an open tray take clicks; the parked tray's box must
+     not swallow anything happening on the bench beside it. */
+  pointer-events: none;
+}
+
+/* The tray parks inside here while shut. Without the clip, a drawer hanging off
+   the right edge would widen the document and bring back the scrollbar this
+   whole arrangement exists to remove. Padding (cancelled by the negative
+   margin) leaves the shell's drop shadow somewhere to fall. */
+.tape-drawer__clip {
+  overflow: hidden;
+  padding: 22px;
+  margin: -22px;
+}
+
+.tape-drawer__tray {
+  width: clamp(272px, 26vw, 336px);
+  transform: translateX(calc(100% + 30px));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 180ms ease;
+}
+
+.tape-drawer.is-open .tape-drawer__tray {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* The drawer face: a pull moulded like the panel buttons, turned on its side. */
+.tape-handle {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-width: 40px;
+  padding: 20px 10px;
+  border: 1px solid var(--control-edge);
+  border-right: none;
+  border-radius: var(--control-radius) 0 0 var(--control-radius);
+  background: linear-gradient(
+    90deg,
+    #eef0ee 0 6%,
+    var(--bezel-light) 18%,
+    var(--control-face) 55%,
+    var(--bezel-dark) 88%,
+    var(--bezel-darker) 100%
+  );
+  box-shadow:
+    -3px 0 10px rgb(0 0 0 / 45%),
+    inset 0 1px 0 var(--rim-light),
+    inset 0 -1px 0 rgb(0 0 0 / 45%);
+  cursor: pointer;
+  transition:
+    filter var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.tape-handle:hover {
+  filter: brightness(1.06);
+}
+
+/* Pressed in, the way the drawer would sit against its stop. */
+.tape-handle:active,
+.tape-drawer.is-open .tape-handle {
+  transform: translateX(2px);
+}
+
+/* Ridged grip, like the moulded pull on a cassette door. */
+.tape-handle__grip {
+  width: 16px;
+  height: 11px;
+  border-radius: 1px;
+  background: repeating-linear-gradient(
+    180deg,
+    var(--bezel-darker) 0 1px,
+    var(--bezel-light) 1px 3px
+  );
+  box-shadow: inset 0 0 2px rgb(0 0 0 / 45%);
+}
+
+.tape-handle__label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: var(--label-size);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: var(--ink);
+  text-transform: uppercase;
+}
+
+/* ------------------------------------------------------------------ panel */
+
+.tape-shell {
+  width: 100%;
+  max-width: 100%;
+}
+
+.tape-panel {
+  display: grid;
+  gap: 0;
+}
+
+.tape-header {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: clamp(16px, 2.2vw, 24px) 16px clamp(12px, 1.8vw, 18px);
+}
+
+.tape-brand {
+  margin: 0;
+  font-family: var(--font-condensed);
+  font-size: clamp(1.5rem, 3.4vw, 2rem);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: var(--ink);
+  text-transform: uppercase;
+}
+
+.tape-subtitle {
+  margin: 0;
+  font-size: var(--label-size);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--muted-ink);
+  text-transform: uppercase;
+}
+
+.tape-controls {
+  display: grid;
+  justify-items: center;
+  gap: clamp(14px, 2vw, 20px);
+  padding: 0 16px clamp(18px, 2.4vw, 26px);
+}
+
+/* Dark inset screen, the same recipe as the tempo readout: the render settings
+   are a machine report, not a control, so they read as lit glass. */
+.tape-display {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  /* Fixed width so the box never breathes as the tempo changes the duration. */
+  width: 11rem;
+  padding: 9px 0;
+  border-radius: var(--control-radius);
+  border: 1px solid var(--control-edge);
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgb(255 255 255 / 3%) 0 1px,
+      transparent 1px 3px
+    ),
+    linear-gradient(180deg, #0c0e0f, var(--inset-dark));
+  box-shadow:
+    inset 0 3px 10px rgb(0 0 0 / 85%),
+    inset 0 -1px 2px rgb(255 255 255 / 8%),
+    0 1px 0 var(--highlight);
+}
+
+/* Same raking sheen the other glass panels catch. */
+.tape-display::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    118deg,
+    rgb(255 255 255 / 10%) 0%,
+    rgb(255 255 255 / 3%) 28%,
+    transparent 46%
+  );
+}
+
+.tape-display__value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.1em;
+  color: var(--display-ink);
+}
+
+.tape-display__unit {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--muted-ink);
+}
+
+.tape-status {
+  margin: 0;
+  min-height: 1em;
+  font-size: var(--label-size);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--muted-ink);
+  text-transform: uppercase;
+}

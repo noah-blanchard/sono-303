@@ -6,8 +6,9 @@ import {
   MidiContext,
   NoteGateContext,
   StateContext,
+  WavExportContext,
 } from "./contexts";
-import type { AuditionNote, MidiState, NoteGate } from "./contexts";
+import type { AuditionNote, MidiState, NoteGate, WavExport } from "./contexts";
 
 export type Sono303Dispatch = Dispatch<Sono303Action>;
 
@@ -37,6 +38,11 @@ export function useNoteGate(): NoteGate {
 /** Sounds a self-releasing note — the gate's `preview` on its own. */
 export function useAuditionNote(): AuditionNote {
   return useNoteGate().preview;
+}
+
+/** The SONO-TAPE bounce. Rejects when no audio host is mounted. */
+export function useWavExport(): WavExport {
+  return useContext(WavExportContext);
 }
 
 /** MIDI connection state. Reports `idle` when no live input host is mounted. */

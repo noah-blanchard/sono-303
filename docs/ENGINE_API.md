@@ -133,6 +133,9 @@ export type Sono303EngineFactory = () => Sono303EngineApi;
 - Called with `null` exactly when playback stops.
 - The engine never calls the listener at any other time; it never emits
   pattern, parameter, or error events.
+- **An engine rendering offline must never be given a listener.** The callback
+  is scheduled through `Tone.getDraw()`, which runs on `requestAnimationFrame`:
+  meaningless faster than real time, and absent outside a browser. See §10.
 
 ### The live note gate
 
@@ -250,7 +253,15 @@ window.addEventListener("beforeunload", () => engine.dispose());
 
 The React host in this repo does exactly the same thing inside
 `useSono303`, mapping reducer state onto `setPattern`/`setParameters` and
-mapping `stepListener` back onto a `transport/setCurrentStep` dispatch.
+mapping `stepListener` back onto a `transport/setCurrentStep` dispatch. It
+returns two capabilities, which `App` publishes through their contexts:
+
+```ts
+type Sono303Host = {
+  noteGate: NoteGate;    // NoteGateContext   — live play
+  exportWav: WavExport;  // WavExportContext  — the SONO-TAPE bounce
+};
+```
 
 ## 8. Implementations
 
@@ -302,3 +313,55 @@ Contract notes:
 | `distortionMapping.ts`  | `src/sequencer/distortionMapping.ts` | Knob → Hz / dB / compensation. Lives in the data model so the UI can print readouts without importing `src/audio/`. |
 | `SonoDistEngine`        | `src/audio/SonoDistEngine.ts`     | The Tone.js graph, smoothing and anti-click mode transitions. |
 | `SonoAudioRig`          | `src/audio/SonoAudioRig.ts`       | Owns instrument + effect + master + limiter, and the only route to `Tone.Destination`. |
+
+## 10. Offline export — `renderPattern`
+
+SONO-TAPE bounces the phrase by reusing the whole instrument rather than
+re-implementing it. No module in `src/audio/` captures an AudioContext at
+import time, so building a **fresh `SonoAudioRig` inside a `Tone.Offline`
+callback** binds the entire graph to an `OfflineAudioContext`, and the rig's one
+route to `Tone.getDestination()` becomes the route into the rendered buffer.
+
+```ts
+// src/audio/renderPattern.ts
+type RenderRequest = {
+  steps: Pattern;
+  parameters: SynthParameters;
+  dist: SonoDistState;
+  patched: boolean;
+  bars: number;
+  sampleRate?: number;      // defaults to EXPORT_SAMPLE_RATE (48000)
+};
+type RenderResult = {
+  samples: Float32Array;
+  sampleRate: number;       // the rate rendered at, not the one requested
+};
+
+function renderPattern(request: RenderRequest): Promise<RenderResult>;
+```
+
+Contract notes:
+
+- **Rendered mono.** The instrument is one voice with no stereo width anywhere
+  in the graph, so a second channel would be a duplicate.
+- **One extra pass is rendered and discarded.** The render is deterministic and
+  therefore periodic once the ramps settle, so a slice taken from the settled
+  region loops seamlessly — the previous pass's decay tail is already ringing at
+  sample zero instead of the note being chopped.
+- **Never `setStepListener`** on the offline engine (§4).
+- **The distortion state goes through the `SonoAudioRig` constructor**, never
+  `dist.setState`: `SonoDistEngine.setMode` cross-fades an active-to-active swap
+  around a real `setTimeout`, which would fire after the render finished.
+- **`transport.bpm.value` is hard-set after `setParameters`.** The 50 ms tempo
+  ramp from Tone's default 120 integrates into a permanent phase offset that
+  would pull the bounce off the DAW grid.
+- **The returned `sampleRate` is read back off the buffer.** Safari has
+  historically ignored the requested offline rate.
+- Live-note methods are meaningless offline: they schedule at `Tone.immediate()`,
+  which is `0` on an unstarted offline context. Use `setPattern` + transport.
+
+| Unit               | File                          | Purpose |
+| ------------------ | ----------------------------- | ------- |
+| `renderPattern.ts` | `src/audio/renderPattern.ts`  | The offline bounce, and the four rules above. |
+| `wavEncoder.ts`    | `src/audio/wavEncoder.ts`     | Float32 → 24-bit mono PCM RIFF/WAVE bytes. Pure and DOM-free, so it returns `Uint8Array`, not a `Blob`. |
+| `tape.ts`          | `src/sequencer/tape.ts`       | Bar/second/sample math and the file name. In the data model so the panel can print the duration without importing `src/audio/`. |

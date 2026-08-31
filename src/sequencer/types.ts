@@ -68,6 +68,19 @@ export type SonoDistState = {
   level: number;
 };
 
+/** Bar lengths SONO-TAPE can bounce. One bar is the sixteen steps once. */
+export type TapeBars = 1 | 2 | 4 | 8;
+
+/**
+ * SONO-TAPE state.
+ *
+ * Only the bar count lives here. Whether an export is currently running is
+ * transient business of the one panel that shows it, not application state.
+ */
+export type TapeState = {
+  bars: TapeBars;
+};
+
 export type Sono303State = {
   mode: Mode;
   transport: TransportState;
@@ -88,10 +101,14 @@ export type Sono303State = {
   /** Whether the patch cable routes SONO-303 through SONO-DIST. */
   patched: boolean;
   dist: SonoDistState;
+  tape: TapeState;
 };
 
 export type Sono303Action =
   | { type: "transport/toggle" }
+  // Unconditional stop, for callers that must not start a stopped sequencer —
+  // SONO-TAPE bounces from step 0 and cannot share the clock with live playback.
+  | { type: "transport/stop" }
   | { type: "transport/setCurrentStep"; stepIndex: number | null }
   | { type: "mode/set"; mode: Mode }
   | { type: "parameter/set"; key: keyof SynthParameters; value: number | string }
@@ -111,4 +128,5 @@ export type Sono303Action =
   | { type: "dist/setMode"; mode: DistortionMode }
   | { type: "dist/setDrive"; value: number }
   | { type: "dist/setTone"; value: number }
-  | { type: "dist/setLevel"; value: number };
+  | { type: "dist/setLevel"; value: number }
+  | { type: "tape/setBars"; bars: TapeBars };

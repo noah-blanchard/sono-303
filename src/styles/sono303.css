@@ -742,6 +742,7 @@
 .transport-button:focus-visible,
 .segmented__option:focus-visible,
 .step__button:focus-visible,
+.tape-handle:focus-visible,
 .key:focus-visible {
   outline: 2px solid var(--accent-red);
   outline-offset: 2px;
@@ -1248,7 +1249,10 @@
   .step__button,
   .key,
   .key--white,
-  .key--black {
+  .key--black,
+  .tape-handle,
+  .tape-scrim,
+  .tape-drawer__tray {
     transition: none;
   }
 }
