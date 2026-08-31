@@ -60,7 +60,10 @@ export type Sono303EngineApi = {
   setPattern(pattern: Pattern): void;
   setParameters(parameters: SynthParameters): void;
   setStepListener(listener: StepListener): void;
-  previewNote(note: PitchClass, octave: number): void;
+  noteOn(note: PitchClass, octave: number, velocity?: number): void;
+  noteOff(note: PitchClass, octave: number): void;
+  releaseAll(): void;
+  previewNote(note: PitchClass, octave: number, velocity?: number): void;
   connectOutput(destination: InputNode): void;
   disconnectOutput(): void;
 };
@@ -131,18 +134,53 @@ export type Sono303EngineFactory = () => Sono303EngineApi;
 - The engine never calls the listener at any other time; it never emits
   pattern, parameter, or error events.
 
-### `previewNote(note: PitchClass, octave: number): void`
+### The live note gate
 
-- Sounds one note immediately, so a pitch is heard at the moment it is written.
-- Uses a **separate audition voice**, not the sequencer's. Auditioning while a
-  pattern plays must never steal or cut the running note.
-- That voice shares the output bus, so previews are heard through SONO-DIST
-  exactly as the written step will be, and it tracks every sound knob.
+Four methods drive every note played by hand — the mini keyboard, the computer
+keyboard and MIDI all arrive here. They share one set of properties:
+
+- All use the **separate audition voice**, never the sequencer's. Playing live
+  while a pattern runs must never steal or cut the running note.
+- That voice shares the output bus, so live notes are heard through SONO-DIST
+  exactly as a written step will be, and it tracks every sound knob.
+- All apply the current transposition, so a note played live is honest about
+  what the same pitch would sound like in the pattern.
+- All are scheduled with `Tone.immediate()`, deliberately skipping the
+  context's ~100 ms scheduling lookAhead. That headroom is what keeps the
+  sequencer steady, but on a note played by hand it is pure latency.
+
+#### `noteOn(note, octave, velocity?): void`
+
+- Starts a note and holds it until the matching `noteOff`.
 - Fire-and-forget: it unlocks audio and initializes on its own, because the
-  click that triggers it is itself a valid user gesture. The first note a user
-  writes should sound without pressing START first.
-- Applies the current transposition, and never shorter than 180 ms so a
-  preview stays audible at fast tempos.
+  gesture that triggers it is itself a valid user gesture. The first note
+  played should sound without pressing START first. Because that unlock is
+  async, a note released before it completes must never end up stranded.
+- `velocity` is normalized 0..1. It scales loudness, and at or above the accent
+  threshold (MIDI 100) also fires a **second accent bus** wired into the
+  audition voice's filter — never the sequencer's, so a hard-hit live note
+  cannot brighten the pattern underneath it. Omitting it means no accent: the
+  mouse and the computer keyboard are not velocity sensitive.
+
+#### `noteOff(note, octave): void`
+
+- Releases a held note. Releasing one that is not held is a no-op.
+- The audition voice is monophonic, so overlapping notes follow **last-note
+  priority**: releasing the note that owns the voice hands it back to whichever
+  note is still held, via `setNote` rather than a fresh attack. Releasing a note
+  buried in the stack changes nothing audible.
+
+#### `releaseAll(): void`
+
+- Releases everything at once. Called on window blur, on `stop()` and on
+  `dispose()` — a note held across any of those would drone with nothing left
+  to end it.
+
+#### `previewNote(note, octave, velocity?): void`
+
+- `noteOn` plus a release scheduled on Tone's own clock, for a gesture with no
+  natural end: a click, or a key activated with Enter/Space.
+- Never shorter than 180 ms, so it stays audible at fast tempos.
 
 ### `connectOutput(destination: InputNode): void` / `disconnectOutput(): void`
 

@@ -75,6 +75,14 @@ export type Sono303State = {
   currentStep: number | null;
   /** Lowest of the two octaves the mini keyboard shows; moved only by OCT −/+. */
   keyboardOctave: number;
+  /** Whether the mini keyboard prints its computer-key bindings on the keys. */
+  keyHintsVisible: boolean;
+  /**
+   * MIDI numbers currently sounding live, from any note source. Purely visual
+   * feedback — it lights the keys, and is the only sign a MIDI controller is
+   * actually reaching the instrument.
+   */
+  heldNotes: number[];
   parameters: SynthParameters;
   steps: Pattern;
   /** Whether the patch cable routes SONO-303 through SONO-DIST. */
@@ -88,12 +96,17 @@ export type Sono303Action =
   | { type: "mode/set"; mode: Mode }
   | { type: "parameter/set"; key: keyof SynthParameters; value: number | string }
   | { type: "step/select"; stepIndex: number }
-  | { type: "step/setPitch"; note: PitchClass; octave?: number }
+  // `accent: true` forces the flag on — a hard MIDI hit writes an accented
+  // step. Omitting it leaves whatever the step already had.
+  | { type: "step/setPitch"; note: PitchClass; octave?: number; accent?: boolean }
   | { type: "step/setRest"; rest: boolean }
   | { type: "step/advance" }
   | { type: "step/changeOctave"; delta: -1 | 1 }
   | { type: "step/toggleAccent" }
   | { type: "step/toggleSlide" }
+  | { type: "ui/toggleKeyHints" }
+  | { type: "notes/setHeld"; midi: number; held: boolean }
+  | { type: "notes/releaseAll" }
   | { type: "patch/set"; patched: boolean }
   | { type: "dist/setMode"; mode: DistortionMode }
   | { type: "dist/setDrive"; value: number }

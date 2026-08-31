@@ -11,6 +11,8 @@ is the single source of truth; this file summarizes the operational rules.
 - **React 19** for the interface
 - **TypeScript** strict mode
 - **Tone.js** for all audio
+- **WEBMIDI.js** (`webmidi`) for MIDI input — never hand-roll status-byte
+  parsing again; it also owns port hot-plug and velocity normalization
 - **Plain CSS** (no CSS frameworks)
 - **React `useReducer`** for application state
 
@@ -50,16 +52,28 @@ anything from the spec's Explicit Non-Goals (§13).
 - `envMod` / `accentAmount` stay in `0..1`; step octave in `1..5`;
   transpose in `±12`; `selectedStep` in `0..15`.
 - Enabling REST on a step resets its `accent` and `slide` to `false`.
-- Mode (`play`/`write`) and transport (`started`/`stopped`) are independent —
-  changing one must never change the other.
+- Mode couples to transport in **one direction only**: entering `play` stops
+  the transport and clears the playhead, because PLAY is a live instrument and
+  its START/STOP is locked out. Entering `write` must never change the
+  transport, and toggling the transport must never change the mode.
+- Free play never touches the pattern: in `play` a note sounds and nothing
+  else, and OCT −/+ moves only `keyboardOctave`.
 
 ## Audio rules
 
 - Audio initializes only from an explicit user gesture.
 - Exactly one **sequencer** voice and one sequence exist at a time. The engine
-  also owns one separate audition voice for previewing notes as they are
-  written; it shares the output bus but must never be used by the sequencer,
-  so a preview cannot cut a running pattern.
+  also owns one separate audition voice for every note played by hand — mini
+  keyboard, computer keyboard, MIDI — plus its own accent bus. It shares the
+  output bus but must never be used by the sequencer, so live play cannot cut
+  a running pattern and a hard-hit live note cannot brighten it.
+- The audition voice is monophonic and holds notes on a stack, with last-note
+  priority. Nothing may leave a note stranded: releases happen on blur, stop
+  and dispose, and a note released while audio is still unlocking must not
+  attack afterwards.
+- Notes played by hand are scheduled with `Tone.immediate()`, not the default
+  time. Tone's ~100 ms scheduling lookAhead keeps the sequencer steady but is
+  pure latency on a live note.
 - `start()`/`stop()` are idempotent; repeated cycles must not leak nodes or
   create duplicate sequences.
 - `stop()` releases held notes and clears the playhead.

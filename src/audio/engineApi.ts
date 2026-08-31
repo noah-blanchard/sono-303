@@ -27,13 +27,33 @@ export type Sono303EngineApi = {
   /** Registers the single step callback, replacing any previous listener. */
   setStepListener(listener: StepListener): void;
   /**
-   * Sounds one note immediately so the user hears what they just wrote.
+   * Sounds one note immediately, held until the matching `noteOff`.
    *
-   * Fire-and-forget: it unlocks audio and initializes on its own, because the
-   * click that triggers it is itself a valid user gesture. It uses a voice of
-   * its own, so auditioning never interrupts a running pattern.
+   * This is the live-play gate, driven by the computer keyboard, a MIDI
+   * controller or a pointer held on a key. Fire-and-forget: it unlocks audio
+   * and initializes on its own, because the gesture that triggers it is itself
+   * a valid user gesture. It uses the audition voice, so playing live never
+   * interrupts a running pattern.
+   *
+   * The audition voice is monophonic, so overlapping notes follow **last-note
+   * priority**: a new note takes the voice, and releasing it falls back to
+   * whichever note is still held.
+   *
+   * @param velocity Normalized 0..1. Scales loudness, and at or above the
+   *                 accent threshold also fires the audition accent bus.
    */
-  previewNote(note: PitchClass, octave: number): void;
+  noteOn(note: PitchClass, octave: number, velocity?: number): void;
+  /** Releases a held note. Releasing a note that is not held is a no-op. */
+  noteOff(note: PitchClass, octave: number): void;
+  /** Releases every held note at once — used on blur, stop and dispose. */
+  releaseAll(): void;
+  /**
+   * Sounds one note that releases itself shortly after.
+   *
+   * The right primitive for a gesture with no natural release — a click, or a
+   * key activated with Enter/Space — where no `noteOff` will ever arrive.
+   */
+  previewNote(note: PitchClass, octave: number, velocity?: number): void;
   /**
    * Routes the instrument's output onward. The engine never reaches
    * `Tone.Destination` by itself — `SonoAudioRig` owns the only path there, so

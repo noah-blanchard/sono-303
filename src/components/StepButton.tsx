@@ -6,6 +6,8 @@ export type StepButtonProps = {
   step: Step;
   selected: boolean;
   playing: boolean;
+  /** True in PLAY mode, where the pattern is not being edited. */
+  disabled: boolean;
   onSelect: (index: number) => void;
 };
 
@@ -26,6 +28,7 @@ export function StepButton({
   step,
   selected,
   playing,
+  disabled,
   onSelect,
 }: StepButtonProps) {
   const number = index + 1;
@@ -47,6 +50,7 @@ export function StepButton({
         className={classes}
         aria-pressed={selected}
         aria-label={describe(step, number)}
+        disabled={disabled}
         onClick={() => onSelect(index)}
       >
         <span className="step__playhead" aria-hidden="true" />

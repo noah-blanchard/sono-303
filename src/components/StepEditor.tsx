@@ -1,59 +1,52 @@
+import { useNoteInput } from "../hooks/useNoteInput";
 import {
   MAX_OCTAVE,
   MAX_PITCH_OCTAVE,
   MIN_OCTAVE,
 } from "../sequencer/defaults";
-import type { PitchClass } from "../sequencer/types";
-import {
-  useAuditionNote,
-  useSono303Dispatch,
-  useSono303State,
-} from "../state/hooks";
+import { useSono303Dispatch, useSono303State } from "../state/hooks";
 import { MiniKeyboard } from "./MiniKeyboard";
 
 /**
- * Zone 4: every edit applies to the selected step only. All controls are
- * disabled in PLAY mode; accent and slide are additionally disabled while the
- * step is a rest.
+ * Zone 4: the keyboard, and the flags of the selected step.
+ *
+ * The keyboard is live in both modes — in WRITE a key writes the selected step
+ * and advances, in PLAY it is free play — so only the step-editing controls
+ * (REST, ACCENT, SLIDE) lock in PLAY. OCT −/+ never locks: it moves the
+ * playable range, which is exactly what a live player needs.
  */
 export function StepEditor() {
-  const { steps, selectedStep, keyboardOctave, mode } = useSono303State();
+  const { steps, selectedStep, keyboardOctave, mode, keyHintsVisible, heldNotes } =
+    useSono303State();
   const dispatch = useSono303Dispatch();
-  const auditionNote = useAuditionNote();
+  const noteInput = useNoteInput();
 
   const step = steps[selectedStep];
-  const locked = mode === "play";
-  const flagsLocked = locked || !step.active;
-  // OCT −/+ moves the window and the pitch together, so it stays useful until
-  // both have hit the same end.
-  const canLower = keyboardOctave > MIN_OCTAVE || step.octave > MIN_OCTAVE;
+  const playing = mode === "play";
+  // Only the pattern is off limits in PLAY; the instrument itself is not.
+  const editingLocked = playing;
+  const flagsLocked = editingLocked || !step.active;
+  // OCT −/+ moves the window and, in WRITE, the pitch with it — so it stays
+  // useful until both have hit the same end. In PLAY only the window moves.
+  const canLower =
+    keyboardOctave > MIN_OCTAVE || (!playing && step.octave > MIN_OCTAVE);
   const canRaise =
-    keyboardOctave < MAX_OCTAVE || step.octave < MAX_PITCH_OCTAVE;
-
-  /**
-   * Writing a note is one gesture: hear it, store it, move to the next step.
-   *
-   * Advancing is what turns pattern entry into a run of key presses instead of
-   * alternating between the keyboard and the step grid. The keyboard window
-   * deliberately stays put while this happens.
-   */
-  function writeNote(note: PitchClass, octave: number): void {
-    auditionNote(note, octave);
-    dispatch({ type: "step/setPitch", note, octave });
-    dispatch({ type: "step/advance" });
-  }
+    keyboardOctave < MAX_OCTAVE || (!playing && step.octave < MAX_PITCH_OCTAVE);
 
   return (
     <section
-      className={`zone zone--editor${locked ? " is-locked" : ""}`}
-      aria-label="Selected step editor"
+      className={`zone zone--editor${playing ? " is-live" : ""}`}
+      aria-label={playing ? "Keyboard" : "Selected step editor"}
     >
       <MiniKeyboard
         note={step.note}
         octave={step.octave}
         baseOctave={keyboardOctave}
-        disabled={locked}
-        onSelect={writeNote}
+        showKeyHints={keyHintsVisible}
+        heldNotes={heldNotes}
+        onNoteOn={noteInput.start}
+        onNoteOff={noteInput.stop}
+        onNotePress={noteInput.press}
       />
 
       <div className="editor-controls">
@@ -66,7 +59,7 @@ export function StepEditor() {
             className="panel-button panel-button--toggle"
             aria-labelledby="rest-label"
             aria-pressed={!step.active}
-            disabled={locked}
+            disabled={editingLocked}
             onClick={() =>
               dispatch({ type: "step/setRest", rest: step.active })
             }
@@ -84,8 +77,12 @@ export function StepEditor() {
             <button
               type="button"
               className="panel-button"
-              aria-label="Lower the octave of the selected step"
-              disabled={locked || !canLower}
+              aria-label={
+                playing
+                  ? "Lower the playable octave"
+                  : "Lower the octave of the selected step"
+              }
+              disabled={!canLower}
               onClick={() => dispatch({ type: "step/changeOctave", delta: -1 })}
             >
               −
@@ -93,8 +90,12 @@ export function StepEditor() {
             <button
               type="button"
               className="panel-button"
-              aria-label="Raise the octave of the selected step"
-              disabled={locked || !canRaise}
+              aria-label={
+                playing
+                  ? "Raise the playable octave"
+                  : "Raise the octave of the selected step"
+              }
+              disabled={!canRaise}
               onClick={() => dispatch({ type: "step/changeOctave", delta: 1 })}
             >
               +
@@ -116,6 +117,24 @@ export function StepEditor() {
               />
             ))}
           </div>
+        </div>
+
+        <div className="editor-control">
+          <span className="control-label" id="keys-label">
+            KEYS
+          </span>
+          <button
+            type="button"
+            className="panel-button panel-button--toggle"
+            aria-labelledby="keys-label"
+            aria-pressed={keyHintsVisible}
+            onClick={() => dispatch({ type: "ui/toggleKeyHints" })}
+          >
+            <span
+              className={`led led--small${keyHintsVisible ? " is-on" : ""}`}
+              aria-hidden="true"
+            />
+          </button>
         </div>
 
         <div className="editor-control">

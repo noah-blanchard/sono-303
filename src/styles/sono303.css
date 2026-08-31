@@ -481,6 +481,53 @@
   gap: 8px;
 }
 
+/* MIDI: the LED and the picker share a row under the label, so the group is
+   the same height as its neighbours whichever state it is in. */
+.control-group--midi {
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: auto var(--touch-target);
+  align-items: center;
+  justify-items: center;
+  gap: 6px 8px;
+}
+
+.control-group--midi > .control-label {
+  grid-column: 1 / -1;
+}
+
+.control-group--midi > .panel-button {
+  grid-column: 1 / -1;
+}
+
+/* An inset readout, matching the tempo display rather than a raw form
+   control — nothing else on this panel looks like a browser widget. */
+.midi-select {
+  max-width: 150px;
+  height: var(--touch-target);
+  padding: 0 8px;
+  border: 1px solid var(--control-edge);
+  border-radius: var(--control-radius);
+  background: linear-gradient(180deg, var(--inset-dark), #22262a);
+  box-shadow: inset 0 2px 5px rgb(0 0 0 / 65%);
+  color: var(--display-ink);
+  font-family: var(--font-condensed);
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.midi-select:focus-visible {
+  outline: 2px solid var(--accent-red);
+  outline-offset: 2px;
+}
+
+.panel-button--wide {
+  min-width: 96px;
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+}
+
 /* Shared button moulding: bright top chamfer, mid face, dark lower facet. */
 .transport-button,
 .panel-button,
@@ -526,8 +573,18 @@
   transition: filter var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.transport-button:hover {
+.transport-button:hover:not(:disabled) {
   filter: brightness(1.05);
+}
+
+/* Locked in PLAY: there is no sequencer to start. */
+.transport-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.transport-button:disabled:active {
+  transform: none;
 }
 
 .transport-button:active,
@@ -791,13 +848,23 @@
   transition: filter var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.step__button:hover {
+.step__button:hover:not(:disabled) {
   filter: brightness(1.06);
 }
 
-.step__button:active {
+.step__button:active:not(:disabled) {
   transform: translateY(2px);
   box-shadow: var(--shadow-control-pressed);
+}
+
+.step__button:disabled {
+  cursor: default;
+}
+
+/* PLAY mode: there is no pattern being edited and no playhead to follow, so
+   the whole grid recedes rather than each of the sixteen pads greying out. */
+.zone--sequencer.is-locked {
+  opacity: 0.5;
 }
 
 .step__button.is-selected,
@@ -859,8 +926,10 @@
   gap: clamp(16px, 2vw, 36px);
 }
 
-.zone--editor.is-locked {
-  opacity: 0.75;
+/* PLAY mode: the editor zone is the live half of the instrument, so it stays
+   at full strength — only its step-editing buttons carry a disabled state. */
+.zone--editor.is-live {
+  opacity: 1;
 }
 
 .editor-controls {
@@ -1030,6 +1099,73 @@
 .key:disabled {
   cursor: default;
   opacity: 0.75;
+}
+
+/* Computer-key binding, printed above the note name. Screen-printed look:
+   present enough to learn from, quiet enough to ignore once you have. */
+.key__hint {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-condensed);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  user-select: none;
+}
+
+.key--white .key__hint {
+  bottom: 26px;
+  font-size: 0.6875rem;
+  color: var(--muted-ink);
+}
+
+.key--black .key__hint {
+  bottom: 22px;
+  font-size: 0.625rem;
+  color: rgb(242 243 240 / 62%);
+}
+
+/* Sounding right now, from any source — pointer, computer keyboard or MIDI.
+   Deliberately a red glow rather than the selected step's inset ring, since a
+   key can be both the selected pitch and held at the same time. */
+.key.is-held {
+  filter: brightness(1.04);
+}
+
+.key--white.is-held {
+  transform: translateY(2px);
+  background:
+    linear-gradient(90deg, rgb(0 0 0 / 10%) 0 1px, transparent 1px calc(100% - 1px), rgb(0 0 0 / 6%) calc(100% - 1px)),
+    linear-gradient(180deg, #ffffff, #ffe3e3 60%, #f0c9ca);
+  box-shadow:
+    inset 0 -2px 4px rgb(0 0 0 / 16%),
+    inset 0 3px 5px rgb(0 0 0 / 14%),
+    0 0 12px var(--accent-red-glow);
+}
+
+.key--black.is-held {
+  transform: translateY(2px);
+  box-shadow:
+    0 2px 4px rgb(0 0 0 / 50%),
+    inset 0 2px 4px rgb(0 0 0 / 60%),
+    0 0 12px var(--accent-red-glow);
+}
+
+.key--white.is-held.is-selected {
+  box-shadow:
+    inset 0 -2px 4px rgb(0 0 0 / 16%),
+    inset 0 3px 5px rgb(0 0 0 / 14%),
+    inset 0 0 0 2px var(--accent-red),
+    0 0 12px var(--accent-red-glow);
+}
+
+.key--black.is-held.is-selected {
+  box-shadow:
+    0 2px 4px rgb(0 0 0 / 50%),
+    inset -2px 0 3px rgb(0 0 0 / 50%),
+    inset 0 0 0 2px var(--accent-red),
+    0 0 12px var(--accent-red-glow);
 }
 
 /* ------------------------------------------------------- responsiveness */

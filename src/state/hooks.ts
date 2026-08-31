@@ -1,8 +1,13 @@
 import { useContext } from "react";
 import type { Dispatch } from "react";
 import type { Sono303Action, Sono303State } from "../sequencer/types";
-import { AuditionContext, DispatchContext, StateContext } from "./contexts";
-import type { AuditionNote } from "./contexts";
+import {
+  DispatchContext,
+  MidiContext,
+  NoteGateContext,
+  StateContext,
+} from "./contexts";
+import type { AuditionNote, MidiState, NoteGate } from "./contexts";
 
 export type Sono303Dispatch = Dispatch<Sono303Action>;
 
@@ -22,7 +27,19 @@ export function useSono303Dispatch(): Sono303Dispatch {
   return dispatch;
 }
 
-/** Sounds a note. Silently does nothing when no audio host is mounted. */
+/**
+ * The live-play gate. Silently does nothing when no audio host is mounted.
+ */
+export function useNoteGate(): NoteGate {
+  return useContext(NoteGateContext);
+}
+
+/** Sounds a self-releasing note — the gate's `preview` on its own. */
 export function useAuditionNote(): AuditionNote {
-  return useContext(AuditionContext);
+  return useNoteGate().preview;
+}
+
+/** MIDI connection state. Reports `idle` when no live input host is mounted. */
+export function useMidi(): MidiState {
+  return useContext(MidiContext);
 }

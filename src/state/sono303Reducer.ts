@@ -101,8 +101,16 @@ export function sono303Reducer(
       return currentStep === state.currentStep ? state : { ...state, currentStep };
     }
 
-    case "mode/set":
-      return action.mode === state.mode ? state : { ...state, mode: action.mode };
+    case "mode/set": {
+      if (action.mode === state.mode) return state;
+      // PLAY turns the box into a live instrument, so the sequencer has no
+      // business running: entering it stops the transport and clears the
+      // playhead. Entering WRITE never touches the transport.
+      if (action.mode === "play") {
+        return { ...state, mode: "play", transport: "stopped", currentStep: null };
+      }
+      return { ...state, mode: action.mode };
+    }
 
     case "parameter/set": {
       const parameters = applyParameter(state.parameters, action.key, action.value);
@@ -131,7 +139,10 @@ export function sono303Reducer(
           typeof action.octave === "number"
             ? clamp(Math.trunc(action.octave), MIN_OCTAVE, MAX_PITCH_OCTAVE)
             : step.octave;
-        return { ...step, note: action.note, octave, active: true };
+        // `accent` only ever forces the flag on (a hard MIDI hit). Leaving it
+        // out preserves whatever the step already carried.
+        const accent = action.accent === true ? true : step.accent;
+        return { ...step, note: action.note, octave, accent, active: true };
       });
 
     case "step/setRest":
@@ -160,6 +171,13 @@ export function sono303Reducer(
         MIN_OCTAVE,
         MAX_OCTAVE,
       );
+      // In PLAY there is no step being edited — OCT only transposes the
+      // playable range, and the pattern must come out untouched.
+      if (state.mode === "play") {
+        return keyboardOctave === state.keyboardOctave
+          ? state
+          : { ...state, keyboardOctave };
+      }
       const next = updateStep(state, state.selectedStep, (step) => {
         const octave = clamp(
           step.octave + action.delta,
@@ -182,6 +200,23 @@ export function sono303Reducer(
       return updateStep(state, state.selectedStep, (step) =>
         step.active ? { ...step, slide: !step.slide } : step,
       );
+
+    case "ui/toggleKeyHints":
+      return { ...state, keyHintsVisible: !state.keyHintsVisible };
+
+    case "notes/setHeld": {
+      const isHeld = state.heldNotes.includes(action.midi);
+      if (isHeld === action.held) return state;
+      return {
+        ...state,
+        heldNotes: action.held
+          ? [...state.heldNotes, action.midi]
+          : state.heldNotes.filter((midi) => midi !== action.midi),
+      };
+    }
+
+    case "notes/releaseAll":
+      return state.heldNotes.length === 0 ? state : { ...state, heldNotes: [] };
 
     case "patch/set":
       return action.patched === state.patched
