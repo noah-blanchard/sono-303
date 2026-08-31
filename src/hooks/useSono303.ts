@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { SonoAudioRig } from "../audio/SonoAudioRig";
 import type { Sono303EngineFactory } from "../audio/engineApi";
-import type { AuditionNote } from "../state/contexts";
+import type { NoteGate } from "../state/contexts";
 import { useSono303Dispatch, useSono303State } from "../state/hooks";
 
 /**
@@ -12,10 +12,10 @@ import { useSono303Dispatch, useSono303State } from "../state/hooks";
  * back onto a reducer action, and disposes it on unmount. No other React
  * module may import from `src/audio/`.
  *
- * Returns the audition callback, which the host publishes through
- * `AuditionContext` so panels can sound a note without ever touching the rig.
+ * Returns the note gate, which the host publishes through `NoteGateContext`
+ * so panels and input hooks can sound notes without ever touching the rig.
  */
-export function useSono303(createEngine?: Sono303EngineFactory): AuditionNote {
+export function useSono303(createEngine?: Sono303EngineFactory): NoteGate {
   const state = useSono303State();
   const dispatch = useSono303Dispatch();
 
@@ -64,9 +64,23 @@ export function useSono303(createEngine?: Sono303EngineFactory): AuditionNote {
     }
   }, [state.transport]);
 
-  // Stable identity: it reads the rig through the ref, so publishing it in a
-  // context never re-renders the tree.
-  return useCallback((note, octave) => {
-    rigRef.current?.synth.previewNote(note, octave);
-  }, []);
+  // Stable identity: every member reads the rig through the ref, so publishing
+  // the gate in a context never re-renders the tree.
+  return useMemo<NoteGate>(
+    () => ({
+      noteOn: (note, octave, velocity) => {
+        rigRef.current?.synth.noteOn(note, octave, velocity);
+      },
+      noteOff: (note, octave) => {
+        rigRef.current?.synth.noteOff(note, octave);
+      },
+      releaseAll: () => {
+        rigRef.current?.synth.releaseAll();
+      },
+      preview: (note, octave, velocity) => {
+        rigRef.current?.synth.previewNote(note, octave, velocity);
+      },
+    }),
+    [],
+  );
 }

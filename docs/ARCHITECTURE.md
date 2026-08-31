@@ -48,13 +48,19 @@ sono-303/
 │   │   ├── types.ts            #   Step, Pattern, SynthParameters, State, Action
 │   │   ├── defaults.ts         #   Default parameters & 16-step pattern
 │   │   ├── distortionMapping.ts#   DRIVE/TONE/LEVEL → Hz, dB, compensation
+│   │   ├── keyMap.ts           #   FL-style computer-key → semitone map
+│   │   ├── velocity.ts         #   Where a note becomes an accent
 │   │   └── pitch.ts            #   Pitch-class / octave / transpose math
 │   ├── state/                  # React state layer
 │   │   ├── sono303Reducer.ts   #   Pure reducer (serializable in/out)
 │   │   ├── sonoDistReducer.ts  #   Pure sub-reducer for the module
-│   │   └── Sono303Context.tsx  #   Provider + state/dispatch hooks
+│   │   ├── Sono303Context.tsx  #   Provider + state/dispatch hooks
+│   │   └── LiveInputProvider.tsx#  Mounts the keyboard + MIDI note sources
 │   ├── hooks/
-│   │   └── useSono303.ts       #   THE integration seam (rig ↔ reducer)
+│   │   ├── useSono303.ts       #   THE integration seam (rig ↔ reducer)
+│   │   ├── useNoteInput.ts     #   One note source → the current mode
+│   │   ├── useComputerKeyboard.ts# Physical keys → notes (FL layout)
+│   │   └── useMidiInput.ts     #   Web MIDI access, device picker, notes
 │   ├── components/             # Presentational React — dispatch only
 │   │   ├── Workbench.tsx       #   Both units + the patch cable between them
 │   │   ├── Sono303Panel.tsx    #   Four-zone instrument layout
@@ -62,8 +68,9 @@ sono-303/
 │   │   ├── TransportControls.tsx#  Zone 2: start/stop, mode, tempo, transpose
 │   │   ├── StepSequencer.tsx   #   Zone 3: 16-step grid
 │   │   ├── StepButton.tsx      #   One step button + A/S indicators
-│   │   ├── StepEditor.tsx      #   Zone 4: selected-step editor
-│   │   ├── MiniKeyboard.tsx    #   Two-octave pitch selector (C1–B2 … C5–B6)
+│   │   ├── StepEditor.tsx      #   Zone 4: keyboard + selected-step flags
+│   │   ├── MiniKeyboard.tsx    #   Playable two octaves (C1–B2 … C5–B6)
+│   │   ├── MidiControls.tsx    #   Zone 2: MIDI permission + device picker
 │   │   ├── SonoDistPanel.tsx   #   SONO-DIST faceplate
 │   │   ├── DistortionModeSelector.tsx# Exclusive four-way voicing selector
 │   │   ├── JackSocket.tsx      #   Panel jack; click/keyboard patch toggle
@@ -149,7 +156,9 @@ Rules:
 - `src/components/*` imports from `src/state/*` and `src/sequencer/types.ts`
   only. **Never** from `src/audio/*` and **never** imports `tone`.
 - `src/hooks/useSono303.ts` is the **only** file allowed to import both
-  `src/audio/*` and the React layer.
+  `src/audio/*` and the React layer. It publishes a `NoteGate` through
+  `NoteGateContext`; the note-source hooks reach the instrument through that
+  context, so none of them imports `src/audio/*` either.
 - `src/audio/*` never imports React.
 - `src/sequencer/*` imports neither React nor Tone.js.
 - The reducer is a pure function: `(state, action) => state`, no side effects.
@@ -159,16 +168,48 @@ Rules:
 ```ts
 // src/sequencer/types.ts (summary — see file for the canonical definitions)
 type Sono303State = {
-  mode: "play" | "write";            // independent from transport
+  mode: "play" | "write";            // entering "play" stops the transport
   transport: "started" | "stopped";
   selectedStep: number;              // 0..15
   currentStep: number | null;        // playhead, null when stopped
   keyboardOctave: number;            // 1..5, lowest octave the keyboard shows
+  keyHintsVisible: boolean;          // print computer-key caps on the keys
+  heldNotes: number[];               // MIDI numbers sounding live (visual)
   parameters: SynthParameters;       // 9 synth/transport values
   steps: Step[];                     // ALWAYS exactly 16
   patched: boolean;                  // is the cable in SONO-DIST?
   dist: SonoDistState;               // mode + three normalized knobs
 };
+```
+
+### The two modes
+
+`mode` is what separates a sequencer from an instrument, and it is the one
+place where two pieces of state are deliberately coupled:
+
+| | WRITE | PLAY |
+|---|---|---|
+| Bottom keyboard | writes the selected step, then advances | free play |
+| Computer keyboard / MIDI | same as the keyboard | free play |
+| START / STOP | runs the pattern | **disabled** |
+| 16 step pads | select the step to edit | **inert** |
+| REST / ACCENT / SLIDE | edit the selected step | **disabled** |
+| OCT − / + | moves the window *and* the step's pitch | moves the window only |
+
+Entering PLAY stops the transport and clears the playhead, because its
+START/STOP is locked out and a pattern left running would have nothing to stop
+it. Entering WRITE never touches the transport.
+
+### Live note sources
+
+Three sources play the instrument, and all three converge on `useNoteInput`,
+which is the only place that knows what a note *means* in each mode:
+
+```
+MiniKeyboard (pointer) ─┐
+useComputerKeyboard ────┼─→ useNoteInput ─→ NoteGateContext ─→ useSono303 ─→ engine
+useMidiInput ───────────┘         │
+                                  └─→ dispatch (WRITE only: setPitch + advance)
 ```
 
 Invariants enforced by the reducer:

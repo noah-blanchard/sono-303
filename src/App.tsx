@@ -1,19 +1,22 @@
 import { Workbench } from "./components/Workbench";
 import { useSono303 } from "./hooks/useSono303";
-import { AuditionContext } from "./state/contexts";
+import { NoteGateContext } from "./state/contexts";
+import { LiveInputProvider } from "./state/LiveInputProvider";
 import "./styles/tokens.css";
 import "./styles/sono303.css";
 import "./styles/sono-dist.css";
 
 export default function App() {
   // The only bridge between React state and the audio rig.
-  const auditionNote = useSono303();
+  const noteGate = useSono303();
 
   return (
-    <AuditionContext.Provider value={auditionNote}>
-      <main className="stage">
-        <Workbench />
-      </main>
-    </AuditionContext.Provider>
+    <NoteGateContext.Provider value={noteGate}>
+      <LiveInputProvider>
+        <main className="stage">
+          <Workbench />
+        </main>
+      </LiveInputProvider>
+    </NoteGateContext.Provider>
   );
 }

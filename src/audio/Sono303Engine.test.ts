@@ -135,7 +135,18 @@ const toneMock = vi.hoisted(() => {
       bpm: { rampTo: vi.fn() },
     },
     draw: { schedule: vi.fn() },
+    // Preview releases ride Tone's own clock. The fake runs them immediately
+    // so a test can assert the release without waiting out the duration.
+    context: {
+      setTimeout: vi.fn((fn: () => void, seconds: number) => {
+        void seconds; // asserted on via the call args, not used here
+        fn();
+      }),
+    },
     start: vi.fn(() => Promise.resolve()),
+    // Live notes bypass the scheduling lookAhead; both clocks read 0 here.
+    now: vi.fn(() => 0),
+    immediate: vi.fn(() => 0),
   };
 });
 
@@ -147,7 +158,10 @@ vi.mock("tone", () => ({
   Gain: toneMock.FakeGain,
   getTransport: () => toneMock.transport,
   getDraw: () => toneMock.draw,
+  getContext: () => toneMock.context,
   start: toneMock.start,
+  now: toneMock.now,
+  immediate: toneMock.immediate,
 }));
 
 // Imported after the mock is registered.
@@ -183,6 +197,11 @@ function accentEnv() {
 
 function accentDepth() {
   return toneMock.multiplyInstances[0];
+}
+
+/** The audition accent bus, created right after the sequencer's. */
+function previewAccentEnv() {
+  return toneMock.envelopeInstances[1];
 }
 
 function playStepAt(index: number, time = 0.5) {
@@ -266,16 +285,20 @@ describe("Sono303Engine note audition", () => {
     const engine = new Sono303Engine();
     engine.previewNote("A", 3);
     await vi.waitFor(() =>
-      expect(previewSynth().triggerAttackRelease).toHaveBeenCalled(),
+      expect(previewSynth().triggerAttack).toHaveBeenCalled(),
     );
 
     // A click is a valid user gesture, so the first preview may also be the
     // moment audio is unlocked — no need to press START first.
     expect(toneMock.start).toHaveBeenCalled();
-    expect(previewSynth().triggerAttackRelease).toHaveBeenCalledWith(
+    expect(previewSynth().triggerAttack).toHaveBeenCalledWith(
       expect.closeTo(220, 1),
       expect.any(Number),
+      expect.any(Number),
     );
+    // Played by hand, so it must skip Tone's 100 ms scheduling lookAhead
+    // rather than arriving a tenth of a second after the key went down.
+    expect(toneMock.immediate).toHaveBeenCalled();
     engine.dispose();
   });
 
@@ -290,7 +313,7 @@ describe("Sono303Engine note audition", () => {
 
     engine.previewNote("E", 4);
     await vi.waitFor(() =>
-      expect(previewSynth().triggerAttackRelease).toHaveBeenCalled(),
+      expect(previewSynth().triggerAttack).toHaveBeenCalled(),
     );
 
     // Auditioning while a pattern runs must not steal or cut the running note.
@@ -305,28 +328,151 @@ describe("Sono303Engine note audition", () => {
     engine.setParameters({ ...defaultParameters, transposeSemitones: 12 });
     engine.previewNote("A", 3);
     await vi.waitFor(() =>
-      expect(previewSynth().triggerAttackRelease).toHaveBeenCalled(),
+      expect(previewSynth().triggerAttack).toHaveBeenCalled(),
     );
 
-    expect(previewSynth().triggerAttackRelease).toHaveBeenCalledWith(
+    expect(previewSynth().triggerAttack).toHaveBeenCalledWith(
       expect.closeTo(440, 1),
+      expect.any(Number),
       expect.any(Number),
     );
     engine.dispose();
   });
 
-  it("keeps the audition voice long enough to hear at any tempo", async () => {
+  it("releases a preview on its own, unlike a held note", async () => {
     const engine = new Sono303Engine();
     engine.setParameters({ ...defaultParameters, tempoBpm: 200 });
     engine.previewNote("C", 3);
     await vi.waitFor(() =>
-      expect(previewSynth().triggerAttackRelease).toHaveBeenCalled(),
+      expect(previewSynth().triggerRelease).toHaveBeenCalled(),
     );
 
     // A sixteenth at 200 BPM is 75 ms — below the audible floor, so the
     // preview is stretched rather than becoming a click.
-    const [, duration] = previewSynth().triggerAttackRelease.mock.calls[0];
+    const [, duration] = toneMock.context.setTimeout.mock.calls[0];
     expect(duration).toBeCloseTo(0.18, 5);
+    engine.dispose();
+  });
+
+  it("does not accent a note played without a velocity", async () => {
+    const engine = new Sono303Engine();
+    engine.noteOn("C", 3);
+    await vi.waitFor(() =>
+      expect(previewSynth().triggerAttack).toHaveBeenCalled(),
+    );
+
+    // The mouse and the computer keyboard are not velocity sensitive, so they
+    // must never accidentally trip the accent bus.
+    expect(previewAccentEnv().triggerAttack).not.toHaveBeenCalled();
+    engine.dispose();
+  });
+
+  it("accents a hard-hit live note on the audition bus only", async () => {
+    const engine = new Sono303Engine();
+    engine.noteOn("C", 3, 1);
+    await vi.waitFor(() =>
+      expect(previewAccentEnv().triggerAttack).toHaveBeenCalled(),
+    );
+
+    // The pattern playing underneath must not brighten with it.
+    expect(accentEnv().triggerAttack).not.toHaveBeenCalled();
+    engine.dispose();
+  });
+});
+
+describe("Sono303Engine held notes", () => {
+  it("holds a note until it is released", async () => {
+    const engine = new Sono303Engine();
+    engine.noteOn("C", 3);
+    await vi.waitFor(() =>
+      expect(previewSynth().triggerAttack).toHaveBeenCalled(),
+    );
+    expect(previewSynth().triggerRelease).not.toHaveBeenCalled();
+
+    engine.noteOff("C", 3);
+    expect(previewSynth().triggerRelease).toHaveBeenCalled();
+    engine.dispose();
+  });
+
+  it("falls back to the note still held, without retriggering", async () => {
+    const engine = new Sono303Engine();
+    engine.noteOn("C", 3);
+    await vi.waitFor(() =>
+      expect(previewSynth().triggerAttack).toHaveBeenCalledTimes(1),
+    );
+    engine.noteOn("E", 3);
+    await vi.waitFor(() =>
+      expect(previewSynth().triggerAttack).toHaveBeenCalledTimes(2),
+    );
+
+    // Last-note priority: releasing the newer note hands the mono voice back
+    // to the one still down rather than cutting to silence.
+    engine.noteOff("E", 3);
+    expect(previewSynth().triggerRelease).not.toHaveBeenCalled();
+    expect(previewSynth().setNote).toHaveBeenCalledWith(
+      expect.closeTo(130.81, 1),
+      expect.any(Number),
+    );
+
+    engine.noteOff("C", 3);
+    expect(previewSynth().triggerRelease).toHaveBeenCalled();
+    engine.dispose();
+  });
+
+  it("ignores the release of a note that is not held", async () => {
+    const engine = new Sono303Engine();
+    await engine.initialize();
+    engine.noteOff("C", 3);
+    expect(previewSynth().triggerRelease).not.toHaveBeenCalled();
+    engine.dispose();
+  });
+
+  it("leaves a note buried in the stack sounding when it is released", async () => {
+    const engine = new Sono303Engine();
+    engine.noteOn("C", 3);
+    await vi.waitFor(() =>
+      expect(previewSynth().triggerAttack).toHaveBeenCalledTimes(1),
+    );
+    engine.noteOn("E", 3);
+    await vi.waitFor(() =>
+      expect(previewSynth().triggerAttack).toHaveBeenCalledTimes(2),
+    );
+
+    // Releasing the older note changes nothing audible — the newer one still
+    // owns the voice.
+    engine.noteOff("C", 3);
+    expect(previewSynth().triggerRelease).not.toHaveBeenCalled();
+    expect(previewSynth().setNote).not.toHaveBeenCalled();
+    engine.dispose();
+  });
+
+  it("releases everything held when playback stops", async () => {
+    const engine = new Sono303Engine();
+    await engine.start();
+    engine.noteOn("C", 3);
+    await vi.waitFor(() =>
+      expect(previewSynth().triggerAttack).toHaveBeenCalled(),
+    );
+    vi.clearAllMocks();
+
+    engine.stop();
+    expect(previewSynth().triggerRelease).toHaveBeenCalled();
+
+    // The stack is empty afterwards, so a late release is a no-op.
+    vi.clearAllMocks();
+    engine.noteOff("C", 3);
+    expect(previewSynth().triggerRelease).not.toHaveBeenCalled();
+    engine.dispose();
+  });
+
+  it("does not strand a note released while audio is still unlocking", async () => {
+    const engine = new Sono303Engine();
+    engine.noteOn("C", 3);
+    // The key comes back up before `Tone.start()` has resolved.
+    engine.noteOff("C", 3);
+    await vi.waitFor(() => expect(toneMock.start).toHaveBeenCalled());
+
+    expect(previewSynth().triggerAttack).not.toHaveBeenCalled();
     engine.dispose();
   });
 

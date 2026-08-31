@@ -197,20 +197,34 @@ describe("sono303Reducer invariants", () => {
     expect(state.steps[2].slide).toBe(false);
   });
 
-  it("keeps mode and transport independent", () => {
+  it("stops the sequencer when PLAY takes over", () => {
     let state = sono303Reducer(createInitialState(), {
       type: "transport/toggle",
     });
+    state = sono303Reducer(state, { type: "transport/setCurrentStep", stepIndex: 5 });
     expect(state.transport).toBe("started");
     expect(state.mode).toBe("write");
 
+    // PLAY is a live instrument, not a pattern player: the sequencer stops and
+    // the playhead clears, so START/STOP can be locked out with nothing
+    // left running behind it.
     state = sono303Reducer(state, { type: "mode/set", mode: "play" });
-    expect(state.transport).toBe("started");
     expect(state.mode).toBe("play");
+    expect(state.transport).toBe("stopped");
+    expect(state.currentStep).toBeNull();
+  });
+
+  it("leaves the transport alone when WRITE takes over", () => {
+    // Only the PLAY direction is coupled — returning to WRITE must not start
+    // anything the user did not ask for.
+    let state = stateWith({ mode: "play", transport: "stopped" });
+    state = sono303Reducer(state, { type: "mode/set", mode: "write" });
+    expect(state.mode).toBe("write");
+    expect(state.transport).toBe("stopped");
 
     state = sono303Reducer(state, { type: "transport/toggle" });
-    expect(state.transport).toBe("stopped");
-    expect(state.mode).toBe("play");
+    state = sono303Reducer(state, { type: "mode/set", mode: "write" });
+    expect(state.transport).toBe("started");
   });
 
   it("clears the playhead when transport stops", () => {
@@ -225,5 +239,90 @@ describe("sono303Reducer invariants", () => {
     state = sono303Reducer(state, { type: "step/toggleSlide" });
     expect(state.steps[1].accent).toBe(false);
     expect(state.steps[1].slide).toBe(false);
+  });
+});
+
+describe("sono303Reducer live play", () => {
+  it("moves only the playable range in PLAY", () => {
+    const before = stateWith({ mode: "play", selectedStep: 0, keyboardOctave: 3 });
+    const after = sono303Reducer(before, { type: "step/changeOctave", delta: 1 });
+
+    // OCT still works in PLAY — it transposes what the keyboard plays — but
+    // there is no step being edited, so the pattern must come out untouched.
+    expect(after.keyboardOctave).toBe(4);
+    expect(after.steps).toEqual(before.steps);
+  });
+
+  it("still clamps the playable range in PLAY", () => {
+    let state = stateWith({ mode: "play", keyboardOctave: 5 });
+    state = sono303Reducer(state, { type: "step/changeOctave", delta: 1 });
+    expect(state.keyboardOctave).toBe(5);
+  });
+
+  it("writes an accent when a note is hit hard", () => {
+    let state = stateWith({ selectedStep: 0 });
+    state = sono303Reducer(state, {
+      type: "step/setPitch",
+      note: "D",
+      octave: 3,
+      accent: true,
+    });
+    expect(state.steps[0]).toMatchObject({ note: "D", accent: true, active: true });
+  });
+
+  it("leaves an existing accent alone when none is given", () => {
+    let state = stateWith({ selectedStep: 0 });
+    state = sono303Reducer(state, {
+      type: "step/setPitch",
+      note: "D",
+      octave: 3,
+      accent: true,
+    });
+    // A softly played note re-pitches the step without clearing its accent:
+    // `accent` only ever forces the flag on.
+    state = sono303Reducer(state, { type: "step/setPitch", note: "E", octave: 3 });
+    expect(state.steps[0].accent).toBe(true);
+
+    state = sono303Reducer(state, {
+      type: "step/setPitch",
+      note: "F",
+      octave: 3,
+      accent: false,
+    });
+    expect(state.steps[0].accent).toBe(true);
+  });
+
+  it("tracks which notes are sounding", () => {
+    let state = sono303Reducer(createInitialState(), {
+      type: "notes/setHeld",
+      midi: 60,
+      held: true,
+    });
+    state = sono303Reducer(state, { type: "notes/setHeld", midi: 64, held: true });
+    expect(state.heldNotes).toEqual([60, 64]);
+
+    // Holding an already-held note must not stack a duplicate.
+    const same = sono303Reducer(state, {
+      type: "notes/setHeld",
+      midi: 60,
+      held: true,
+    });
+    expect(same).toBe(state);
+
+    state = sono303Reducer(state, { type: "notes/setHeld", midi: 60, held: false });
+    expect(state.heldNotes).toEqual([64]);
+
+    state = sono303Reducer(state, { type: "notes/releaseAll" });
+    expect(state.heldNotes).toEqual([]);
+  });
+
+  it("toggles the key hints", () => {
+    const initial = createInitialState();
+    expect(initial.keyHintsVisible).toBe(true);
+    const hidden = sono303Reducer(initial, { type: "ui/toggleKeyHints" });
+    expect(hidden.keyHintsVisible).toBe(false);
+    expect(sono303Reducer(hidden, { type: "ui/toggleKeyHints" }).keyHintsVisible).toBe(
+      true,
+    );
   });
 });

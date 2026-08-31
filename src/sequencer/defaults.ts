@@ -74,6 +74,8 @@ export function createInitialState(): Sono303State {
     selectedStep: 0,
     currentStep: null,
     keyboardOctave: defaultStep.octave,
+    keyHintsVisible: true,
+    heldNotes: [],
     parameters: { ...defaultParameters },
     steps: createDefaultPattern(),
     patched: false,

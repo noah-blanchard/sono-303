@@ -1,9 +1,17 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, MouseEvent, PointerEvent } from "react";
 import { MAX_OCTAVE, MIN_OCTAVE } from "../sequencer/defaults";
-import { PITCH_CLASSES } from "../sequencer/pitch";
+import { semitoneToKeyLabel } from "../sequencer/keyMap";
+import { PITCH_CLASSES, pitchToMidi } from "../sequencer/pitch";
 import type { PitchClass } from "../sequencer/types";
 
-type Key = { note: PitchClass; octave: number; position: number };
+type Key = {
+  note: PitchClass;
+  octave: number;
+  position: number;
+  /** Semitones above the bottom of the window — what a computer key plays. */
+  semitone: number;
+  midi: number;
+};
 
 const WHITE_PER_OCTAVE = 7;
 const WHITE_COUNT = 2 * WHITE_PER_OCTAVE;
@@ -33,20 +41,22 @@ function buildKeys(octaves: readonly [number, number]): {
   blacks: Key[];
 } {
   const [lowest] = octaves;
+  const base = pitchToMidi("C", lowest);
+  const key = (note: PitchClass, octave: number, position: number): Key => {
+    const midi = pitchToMidi(note, octave);
+    return { note, octave, position, semitone: midi - base, midi };
+  };
+
   return {
     whites: octaves.flatMap((octave) =>
-      WHITE_NOTES.map((note, index) => ({
-        note,
-        octave,
-        position: (octave - lowest) * WHITE_PER_OCTAVE + index,
-      })),
+      WHITE_NOTES.map((note, index) =>
+        key(note, octave, (octave - lowest) * WHITE_PER_OCTAVE + index),
+      ),
     ),
     blacks: octaves.flatMap((octave) =>
-      BLACK_OFFSETS.map(([note, offset]) => ({
-        note,
-        octave,
-        position: (octave - lowest) * WHITE_PER_OCTAVE + offset,
-      })),
+      BLACK_OFFSETS.map(([note, offset]) =>
+        key(note, octave, (octave - lowest) * WHITE_PER_OCTAVE + offset),
+      ),
     ),
   };
 }
@@ -61,31 +71,68 @@ export type MiniKeyboardProps = {
   octave: number;
   /** Lowest of the two octaves on screen. */
   baseOctave: number;
-  disabled: boolean;
-  onSelect: (note: PitchClass, octave: number) => void;
+  /** Whether to print each key's computer-keyboard binding on it. */
+  showKeyHints: boolean;
+  /** MIDI numbers currently sounding, from any note source. */
+  heldNotes: readonly number[];
+  /** Press and release, in MIDI numbers. */
+  onNoteOn: (midi: number) => void;
+  onNoteOff: (midi: number) => void;
+  /** Keyboard-activated press, which never gets a release of its own. */
+  onNotePress: (midi: number) => void;
 };
 
 /**
- * Two-octave (24 semitone) chromatic pitch selector. It only assigns a pitch
- * class and octave to the selected step — it is never a playable voice, and
- * picking a key never scrolls the window.
+ * Two-octave (24 semitone) chromatic keyboard.
+ *
+ * It is a real playable voice: pressing a key gates a note for as long as the
+ * pointer is down, in both modes. What that press *means* — free play in PLAY,
+ * writing the selected step in WRITE — is decided upstream, so this component
+ * stays presentational. Picking a key never scrolls the window.
  */
 export function MiniKeyboard({
   note,
   octave,
   baseOctave,
-  disabled,
-  onSelect,
+  showKeyHints,
+  heldNotes,
+  onNoteOn,
+  onNoteOff,
+  onNotePress,
 }: MiniKeyboardProps) {
   const { whites, blacks } = buildKeys(visibleOctaves(baseOctave));
 
+  function handlePointerDown(event: PointerEvent<HTMLButtonElement>, key: Key) {
+    // Capture so a pointer dragged off the key still delivers its release
+    // here, instead of leaving the note hanging.
+    event.currentTarget.setPointerCapture(event.pointerId);
+    onNoteOn(key.midi);
+  }
+
+  function handleClick(event: MouseEvent<HTMLButtonElement>, key: Key) {
+    // `detail === 0` means Enter/Space on a focused key: no pointer events
+    // fired, so nothing has sounded and nothing will release it.
+    if (event.detail === 0) onNotePress(key.midi);
+  }
+
   function renderKey(key: Key, variant: "white" | "black") {
     const selected = key.note === note && key.octave === octave;
+    const held = heldNotes.includes(key.midi);
+    const hint = showKeyHints ? semitoneToKeyLabel(key.semitone) : null;
+    const classes = [
+      "key",
+      `key--${variant}`,
+      selected ? "is-selected" : "",
+      held ? "is-held" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
     return (
       <button
         key={`${key.note}${key.octave}`}
         type="button"
-        className={`key key--${variant}${selected ? " is-selected" : ""}`}
+        className={classes}
         style={
           {
             "--key-position": key.position,
@@ -94,9 +141,16 @@ export function MiniKeyboard({
         }
         aria-pressed={selected}
         aria-label={keyLabel(key.note, key.octave)}
-        disabled={disabled}
-        onClick={() => onSelect(key.note, key.octave)}
+        onPointerDown={(event) => handlePointerDown(event, key)}
+        onPointerUp={() => onNoteOff(key.midi)}
+        onPointerCancel={() => onNoteOff(key.midi)}
+        onClick={(event) => handleClick(event, key)}
       >
+        {hint !== null && (
+          <span className="key__hint" aria-hidden="true">
+            {hint}
+          </span>
+        )}
         <span className="key__label" aria-hidden="true">
           {key.note}
           {key.octave}
@@ -106,7 +160,7 @@ export function MiniKeyboard({
   }
 
   return (
-    <div className="keyboard" role="group" aria-label="Step pitch">
+    <div className="keyboard" role="group" aria-label="Keyboard">
       <div className="keyboard__whites">
         {whites.map((key) => renderKey(key, "white"))}
       </div>

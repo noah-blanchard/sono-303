@@ -1,8 +1,9 @@
 # SONO-303
 
 A browser-based acid bass synthesizer: one monophonic bass voice, a resonant
-low-pass filter, per-step accent and slide, and a looping 16-step sequencer.
-Built with React, TypeScript, and Tone.js.
+low-pass filter, per-step accent and slide, and a looping 16-step sequencer —
+playable live from the computer keyboard or a MIDI controller.
+Built with React, TypeScript, Tone.js and WEBMIDI.js.
 
 ## Quickstart
 
@@ -10,6 +11,47 @@ Built with React, TypeScript, and Tone.js.
 bun install
 bun run dev
 ```
+
+## Playing it
+
+The instrument has two modes, selected with the MODE buttons.
+
+- **WRITE** — build a pattern. Every note you play is written into the selected
+  step, which then advances, so you can fill sixteen steps in sixteen
+  keystrokes. START/STOP runs the pattern.
+- **PLAY** — a live monosynth. The sequencer stops and its controls lock; the
+  keyboard, OCT −/+ and every sound knob stay live.
+
+### Computer keyboard
+
+Two rows of keys form two octaves, laid out like FL Studio. They are mapped by
+**physical key position**, not by the letter printed on the cap, so the note
+rows stay in the same place on any layout — on AZERTY the key labelled `W`
+plays the low C. OCT −/+ moves what both rows play.
+
+```
+upper octave    2 3   5 6 7      (black)
+                Q W E R T Y U    (white)
+
+lower octave   S D   G H J       (black)
+               Z X C V B N M     (white)
+```
+
+The KEYS button prints these caps on the on-screen keyboard; turn it off for a
+clean panel.
+
+### MIDI
+
+Press **ENABLE** under MIDI, accept the browser prompt, then pick an input
+(default: all of them). Notes sound at their true pitch across the controller's
+full range, and velocity drives both loudness and accent — hit at 100 or harder
+and the note accents, which in WRITE is written onto the step.
+
+Web MIDI needs Chrome, Edge or Firefox; Safari does not implement it and the
+control shows `N/A`. If it shows `BLOCKED`, the permission was refused for this
+origin — re-allow it under the site settings icon in the address bar
+(`chrome://settings/content/midiDevices`), since no page-level code can undo a
+stored refusal.
 
 ## Scripts
 

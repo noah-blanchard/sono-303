@@ -75,6 +75,12 @@ export class MockSono303Engine implements Sono303EngineApi {
 
   disconnectOutput(): void {}
 
+  noteOn(): void {}
+
+  noteOff(): void {}
+
+  releaseAll(): void {}
+
   previewNote(): void {}
 
   /** The pattern the real engine will read on every step callback. */

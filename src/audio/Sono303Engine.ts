@@ -1,6 +1,7 @@
 import * as Tone from "tone";
 import { STEP_COUNT, defaultParameters } from "../sequencer/defaults";
-import { midiToFrequency, pitchClassToSemitone } from "../sequencer/pitch";
+import { ACCENT_VELOCITY_NORMALIZED } from "../sequencer/velocity";
+import { midiToFrequency, pitchToMidi } from "../sequencer/pitch";
 import type { Pattern, PitchClass, SynthParameters } from "../sequencer/types";
 import type { Sono303EngineApi, StepListener } from "./engineApi";
 import { computeStepEvent, stepDurationSeconds } from "./stepLogic";
@@ -56,6 +57,17 @@ const ACCENT_DECAY_RATIO = 0.45;
 const MIN_PREVIEW_SECONDS = 0.18;
 
 /**
+ * Velocity for a live note that arrives without one — a mouse click or a
+ * computer key, neither of which is velocity sensitive. It matches the
+ * unaccented sequencer velocity in `stepVelocity`, and sits below the accent
+ * threshold so those sources never accidentally accent.
+ */
+const DEFAULT_VELOCITY = 0.65;
+
+/** Normalized velocity at or above which a live note fires the accent bus. */
+const ACCENT_VELOCITY_THRESHOLD = ACCENT_VELOCITY_NORMALIZED;
+
+/**
  * The real SONO-303 sound engine (docs/ENGINE_API.md).
  *
  * Framework-free: no React, no DOM. It owns exactly one `Tone.MonoSynth`
@@ -90,6 +102,22 @@ export class Sono303Engine implements Sono303EngineApi {
    */
   #accentEnv: Tone.Envelope | null = null;
   #accentDepth: Tone.Multiply | null = null;
+  /**
+   * The same accent bus again, for the audition voice. It has to be a second
+   * pair rather than a fan-out of the first: one envelope feeding both filters
+   * would mean a hard-hit live note also brightened the pattern playing
+   * underneath it.
+   */
+  #previewAccentEnv: Tone.Envelope | null = null;
+  #previewAccentDepth: Tone.Multiply | null = null;
+  /**
+   * MIDI numbers currently held on the audition voice, oldest first.
+   *
+   * The voice is monophonic, so the stack is what makes overlapping notes
+   * behave: the last entry is what sounds, and releasing it falls back to the
+   * one below instead of cutting to silence.
+   */
+  #heldNotes: number[] = [];
   #pattern: Pattern | null = null;
   #parameters: SynthParameters = { ...defaultParameters };
   #listener: StepListener | null = null;
@@ -127,6 +155,18 @@ export class Sono303Engine implements Sono303EngineApi {
     this.#accentEnv.connect(this.#accentDepth);
     this.#accentDepth.connect(this.#synth.filter.frequency);
 
+    // Created after the sequencer's pair so the audition bus is always the
+    // second envelope/multiply the engine owns.
+    this.#previewAccentDepth = new Tone.Multiply(0);
+    this.#previewAccentEnv = new Tone.Envelope({
+      attack: 0.002,
+      decay: defaultParameters.decaySeconds * ACCENT_DECAY_RATIO,
+      sustain: 0,
+      release: 0.05,
+    });
+    this.#previewAccentEnv.connect(this.#previewAccentDepth);
+    this.#previewAccentDepth.connect(this.#previewSynth.filter.frequency);
+
     this.#sequence = new Tone.Sequence<number>(
       (time, stepIndex) => {
         this.#playStep(time, stepIndex);
@@ -153,6 +193,8 @@ export class Sono303Engine implements Sono303EngineApi {
     Tone.getTransport().stop();
     // Silence any note held across a slide, then clear the playhead.
     this.#synth?.triggerRelease();
+    // A live note held through a stop would drone on with nothing to end it.
+    this.releaseAll();
     this.#listener?.(null);
   }
 
@@ -174,12 +216,17 @@ export class Sono303Engine implements Sono303EngineApi {
     this.#previewSynth?.dispose();
     this.#accentEnv?.dispose();
     this.#accentDepth?.dispose();
+    this.#previewAccentEnv?.dispose();
+    this.#previewAccentDepth?.dispose();
     this.output.dispose();
     this.#sequence = null;
     this.#synth = null;
     this.#previewSynth = null;
     this.#accentEnv = null;
     this.#accentDepth = null;
+    this.#previewAccentEnv = null;
+    this.#previewAccentDepth = null;
+    this.#heldNotes = [];
     this.#listener = null;
     this.#pattern = null;
     this.#disposed = true;
@@ -200,36 +247,119 @@ export class Sono303Engine implements Sono303EngineApi {
     this.#listener = listener;
   }
 
-  previewNote(note: PitchClass, octave: number): void {
+  noteOn(
+    note: PitchClass,
+    octave: number,
+    velocity: number = DEFAULT_VELOCITY,
+  ): void {
     if (this.#disposed) return;
-    // Fire-and-forget: the caller is a click handler, not an async function.
-    void this.#playPreview(note, octave);
+    const midi = pitchToMidi(note, octave);
+    // Re-pressing a sounding note moves it to the top rather than stacking a
+    // duplicate, so one release can never leave a phantom entry behind.
+    this.#heldNotes = this.#heldNotes.filter((held) => held !== midi);
+    this.#heldNotes.push(midi);
+    // Fire-and-forget: the caller is an event handler, not an async function.
+    void this.#attackHeldNote(midi, velocity);
+  }
+
+  noteOff(note: PitchClass, octave: number): void {
+    if (this.#disposed) return;
+    const midi = pitchToMidi(note, octave);
+    // Only the note actually holding the voice changes what is heard;
+    // releasing one buried in the stack just removes it from the fallbacks.
+    const wasSounding = this.#topHeldNote() === midi;
+    this.#heldNotes = this.#heldNotes.filter((held) => held !== midi);
+    if (!wasSounding) return;
+
+    const synth = this.#previewSynth;
+    if (synth === null) return;
+
+    // Released by hand, so it skips the scheduling lookAhead exactly as the
+    // attack does — see `#attackHeldNote`.
+    const now = Tone.immediate();
+    const next = this.#topHeldNote();
+    if (next === null) {
+      synth.triggerRelease(now);
+      return;
+    }
+    // Last-note priority: hand the voice back to the note still held without
+    // re-attacking, so a released overlap doesn't retrigger the envelope.
+    synth.portamento = 0;
+    synth.setNote(
+      midiToFrequency(next + this.#parameters.transposeSemitones),
+      now,
+    );
+  }
+
+  releaseAll(): void {
+    if (this.#heldNotes.length === 0) return;
+    this.#heldNotes = [];
+    this.#previewSynth?.triggerRelease(Tone.immediate());
+  }
+
+  previewNote(
+    note: PitchClass,
+    octave: number,
+    velocity: number = DEFAULT_VELOCITY,
+  ): void {
+    if (this.#disposed) return;
+    this.noteOn(note, octave, velocity);
+    void this.#releaseAfterPreview(note, octave);
+  }
+
+  /** Newest held note, or `null` when nothing is held. */
+  #topHeldNote(): number | null {
+    return this.#heldNotes.length === 0
+      ? null
+      : this.#heldNotes[this.#heldNotes.length - 1];
   }
 
   /**
-   * Sounds one audition note on the preview voice.
+   * Attacks a live note on the audition voice.
    *
-   * It unlocks and initializes audio itself: the first note a user writes is
-   * often the first gesture of the session, and they should hear it rather
-   * than having to press START once to "arm" the instrument.
+   * It unlocks and initializes audio itself: the first note played is often
+   * the first gesture of the session, and it should sound rather than needing
+   * START pressed once to "arm" the instrument. Because that unlock is async,
+   * the key may already be back up by the time we get here — hence the
+   * re-check against the stack, which `noteOff` updates synchronously.
    */
-  async #playPreview(note: PitchClass, octave: number): Promise<void> {
+  async #attackHeldNote(midi: number, velocity: number): Promise<void> {
     await Tone.start();
     await this.initialize();
     const synth = this.#previewSynth;
     if (synth === null || this.#disposed) return;
+    if (this.#topHeldNote() !== midi) return;
 
-    // Transposed like playback, so the audition is honest about what the step
-    // will actually sound like.
-    const midi =
-      (octave + 1) * 12 +
-      pitchClassToSemitone(note) +
-      this.#parameters.transposeSemitones;
-    const step = stepDurationSeconds(this.#parameters.tempoBpm);
-    synth.triggerAttackRelease(
-      midiToFrequency(midi),
-      Math.max(MIN_PREVIEW_SECONDS, step * 0.8),
+    // Transposed like playback, so a live note is honest about what the same
+    // pitch would sound like in the pattern.
+    //
+    // `immediate()` rather than the default time, which is Tone's `now()` —
+    // the context clock plus its 100 ms scheduling lookAhead. That headroom is
+    // what keeps the sequencer rock steady, but on a note played by hand it is
+    // pure latency, and 100 ms is enough to make the keyboard feel broken.
+    synth.portamento = 0;
+    synth.triggerAttack(
+      midiToFrequency(midi + this.#parameters.transposeSemitones),
+      Tone.immediate(),
+      velocity,
     );
+    if (velocity >= ACCENT_VELOCITY_THRESHOLD) this.#applyPreviewAccent();
+  }
+
+  /**
+   * Releases a preview note after a short, tempo-related time.
+   *
+   * Scheduled on Tone's own clock rather than a window timer, so it cannot
+   * fire while the audio context is suspended.
+   */
+  async #releaseAfterPreview(note: PitchClass, octave: number): Promise<void> {
+    await Tone.start();
+    await this.initialize();
+    if (this.#disposed) return;
+    const step = stepDurationSeconds(this.#parameters.tempoBpm);
+    Tone.getContext().setTimeout(() => {
+      this.noteOff(note, octave);
+    }, Math.max(MIN_PREVIEW_SECONDS, step * 0.8));
   }
 
   /** Applies the full parameter set; no-ops until the synth exists. */
@@ -250,14 +380,17 @@ export class Sono303Engine implements Sono303EngineApi {
     // harder the filter envelope already swings, the harder an accent hits.
     // At accentAmount 0 the factor is 0, so accented steps stay identical to
     // their neighbours.
-    this.#accentDepth?.factor.rampTo(
-      parameters.accentAmount *
-        ACCENT_MAX_HZ *
-        (0.35 + 0.65 * parameters.envMod),
-      0.02,
-    );
-    if (this.#accentEnv !== null) {
-      this.#accentEnv.decay = parameters.decaySeconds * ACCENT_DECAY_RATIO;
+    const accentDepth =
+      parameters.accentAmount * ACCENT_MAX_HZ * (0.35 + 0.65 * parameters.envMod);
+    this.#accentDepth?.factor.rampTo(accentDepth, 0.02);
+    // The audition accent bus tracks the same knobs, so a hard-hit live note
+    // pops exactly as much as an accented step would.
+    this.#previewAccentDepth?.factor.rampTo(accentDepth, 0.02);
+
+    const accentDecay = parameters.decaySeconds * ACCENT_DECAY_RATIO;
+    if (this.#accentEnv !== null) this.#accentEnv.decay = accentDecay;
+    if (this.#previewAccentEnv !== null) {
+      this.#previewAccentEnv.decay = accentDecay;
     }
   }
 
@@ -287,8 +420,29 @@ export class Sono303Engine implements Sono303EngineApi {
    * whatever is pending and takes over.
    */
   #applyAccent(time: number): void {
-    const accentEnv = this.#accentEnv;
-    const synth = this.#synth;
+    this.#fireAccent(this.#accentEnv, this.#synth, time);
+  }
+
+  /**
+   * The same accent hit on the audition voice, for a hard-hit live note.
+   *
+   * There is no scheduled step time here — the note is played by hand — so it
+   * lands at the context's current time.
+   */
+  #applyPreviewAccent(): void {
+    this.#fireAccent(
+      this.#previewAccentEnv,
+      this.#previewSynth,
+      Tone.immediate(),
+    );
+  }
+
+  /** Shared accent hit: extra filter envelope plus a decaying resonance bump. */
+  #fireAccent(
+    accentEnv: Tone.Envelope | null,
+    synth: Tone.MonoSynth | null,
+    time: number,
+  ): void {
     if (accentEnv === null || synth === null) return;
     // ACCENT at 0 means accented steps are indistinguishable from their
     // neighbours; bail out so we never touch the Q automation timeline.

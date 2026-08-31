@@ -1,6 +1,7 @@
 import { defaultParameters, parameterRanges } from "../sequencer/defaults";
 import type { Mode } from "../sequencer/types";
 import { useSono303Dispatch, useSono303State } from "../state/hooks";
+import { MidiControls } from "./MidiControls";
 import { RotaryKnob } from "./RotaryKnob";
 import { formatBpm, logScale } from "./knobScales";
 
@@ -20,6 +21,9 @@ export function TransportControls() {
   const { transport, mode, parameters } = useSono303State();
   const dispatch = useSono303Dispatch();
   const running = transport === "started";
+  // PLAY is a live instrument, not a pattern player: the sequencer has nothing
+  // to do there, and the reducer has already stopped it.
+  const transportLocked = mode === "play";
   const { transposeSemitones } = parameters;
 
   function changeTranspose(delta: number): void {
@@ -45,6 +49,10 @@ export function TransportControls() {
           className="transport-button"
           aria-labelledby="transport-label"
           aria-pressed={running}
+          disabled={transportLocked}
+          title={
+            transportLocked ? "Switch to WRITE to run the sequencer" : undefined
+          }
           onClick={() => dispatch({ type: "transport/toggle" })}
         >
           <span className="visually-hidden">{running ? "Stop" : "Start"}</span>
@@ -69,6 +77,8 @@ export function TransportControls() {
           ))}
         </div>
       </div>
+
+      <MidiControls />
 
       <div className="tempo-display" aria-hidden="true">
         <span className="tempo-display__value">
