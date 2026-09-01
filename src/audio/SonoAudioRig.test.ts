@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Connection } from "../sequencer/types";
 import type { Sono303EngineApi } from "./engineApi";
 import type { SonoDistEngineApi } from "./distEngineApi";
 
 /**
- * Rig test with a mocked `tone` module and injected fake engines. The point of
- * this suite is the routing contract: one path to the destination, and a patch
- * cable that cross-ramps instead of rewiring.
+ * Rig test with a mocked `tone` module and injected fake engines.
+ *
+ * The point of this suite is the routing contract: one path to the destination,
+ * and a patchbay that cross-ramps gains instead of rewiring. The graph is fixed
+ * at construction; only gain values ever change, which is what makes repatching
+ * click-free.
  */
 
 const toneMock = vi.hoisted(() => {
@@ -43,8 +47,6 @@ const toneMock = vi.hoisted(() => {
     }
   }
 
-  // The rig hangs SONO-TAPE's capture tap off the limiter, and disposing that
-  // tap clears anything it scheduled — so the transport has to exist here now.
   const transport = { schedule: vi.fn(() => 1), clear: vi.fn(), state: "stopped" };
 
   return {
@@ -56,6 +58,10 @@ const toneMock = vi.hoisted(() => {
     FakeLimiter,
     getDestination: vi.fn(() => destination),
     getTransport: vi.fn(() => transport),
+    reset() {
+      gains.length = 0;
+      limiters.length = 0;
+    },
   };
 });
 
@@ -69,6 +75,10 @@ vi.mock("tone", () => ({
     sampleRate: 48000,
     rawContext: {},
     addAudioWorkletModule: vi.fn(async () => {}),
+    createAudioWorkletNode: vi.fn(() => ({
+      port: { postMessage: vi.fn(), onmessage: null },
+      disconnect: vi.fn(),
+    })),
   })),
 }));
 
@@ -94,119 +104,121 @@ function fakeSynth(): Sono303EngineApi {
 
 function fakeDist(): SonoDistEngineApi {
   return {
-    input: { name: "dist.input" } as unknown as SonoDistEngineApi["input"],
-    output: { name: "dist.output" } as unknown as SonoDistEngineApi["output"],
-    setDrive: vi.fn(),
-    setTone: vi.fn(),
-    setLevel: vi.fn(),
-    setMode: vi.fn(),
-    setState: vi.fn(),
+    input: { name: "dist.input" } as never,
     connect: vi.fn(),
-    disconnect: vi.fn(),
+    setState: vi.fn(),
     dispose: vi.fn(),
-  };
+  } as unknown as SonoDistEngineApi;
 }
 
-function createRig(patched = false) {
+const FULL_CHAIN: Connection[] = [
+  { from: "sono303.out", to: "dist.in" },
+  { from: "dist.out", to: "tape.in" },
+];
+
+function build(connections: Connection[]) {
   const synth = fakeSynth();
   const dist = fakeDist();
   const rig = new SonoAudioRig({
     createSynth: () => synth,
     createDist: () => dist,
-    patched,
+    connections,
   });
-  // Construction order: direct, patched, master.
-  const [direct, patchedGain, master] = toneMock.gains;
-  return { rig, synth, dist, direct, patchedGain, master };
+  // Constructed in declaration order, so the routing gains are identifiable by
+  // position: dry, wet, dryToDist, dryToMonitor, dryToTape, wetToMonitor,
+  // wetToTape, monitor, tapeBus.
+  const [, , dryToDist, dryToMonitor, dryToTape, wetToMonitor, wetToTape] =
+    toneMock.gains;
+  return {
+    rig,
+    synth,
+    dist,
+    routing: { dryToDist, dryToMonitor, dryToTape, wetToMonitor, wetToTape },
+  };
 }
 
 beforeEach(() => {
-  toneMock.gains.length = 0;
-  toneMock.limiters.length = 0;
-  vi.clearAllMocks();
+  toneMock.reset();
 });
 
 describe("SonoAudioRig routing", () => {
-  it("feeds both branches and joins them at the master bus", () => {
-    const { rig, synth, dist, direct, patchedGain, master } = createRig();
-
-    expect(synth.connectOutput).toHaveBeenCalledWith(direct);
-    expect(synth.connectOutput).toHaveBeenCalledWith(dist.input);
-    expect(dist.connect).toHaveBeenCalledWith(patchedGain);
-    expect(direct.connect).toHaveBeenCalledWith(master);
-    expect(patchedGain.connect).toHaveBeenCalledWith(master);
-    rig.dispose();
-  });
-
   it("leaves exactly one path to the destination, through the limiter", () => {
-    const { rig, master } = createRig();
-
-    expect(master.chain).toHaveBeenCalledTimes(1);
-    expect(master.chain).toHaveBeenCalledWith(
-      toneMock.limiters[0],
-      toneMock.destination,
-    );
-    expect(toneMock.limiters).toHaveLength(1);
+    build(FULL_CHAIN);
+    const chained = toneMock.gains.filter((gain) => gain.chain.mock.calls.length > 0);
+    expect(chained).toHaveLength(1);
+    const [limiter, destination] = chained[0].chain.mock.calls[0];
+    expect(limiter).toBe(toneMock.limiters[0]);
+    expect(destination).toBe(toneMock.destination);
     expect(toneMock.limiters[0].threshold).toBe(-1);
-    // Nothing else may reach the destination, or the dry signal would double.
-    for (const gain of toneMock.gains) {
-      expect(gain.connect).not.toHaveBeenCalledWith(toneMock.destination);
-    }
-    rig.dispose();
   });
 
-  it("starts unplugged: dry branch open, effect branch muted", () => {
-    const { rig, direct, patchedGain } = createRig(false);
-    expect(direct.gain.value).toBe(1);
-    expect(patchedGain.gain.value).toBe(0);
-    rig.dispose();
+  it("303 through DIST into TAPE: monitor wet, record wet", () => {
+    const { routing } = build(FULL_CHAIN);
+    expect(routing.dryToDist.gain.value).toBe(1);
+    expect(routing.wetToMonitor.gain.value).toBe(1);
+    expect(routing.dryToMonitor.gain.value).toBe(0);
+    expect(routing.wetToTape.gain.value).toBe(1);
+    expect(routing.dryToTape.gain.value).toBe(0);
   });
 
-  it("honours an initial patched flag", () => {
-    const { rig, direct, patchedGain } = createRig(true);
-    expect(direct.gain.value).toBe(0);
-    expect(patchedGain.gain.value).toBe(1);
-    rig.dispose();
+  it("303 straight into TAPE: monitor dry, record dry", () => {
+    const { routing } = build([{ from: "sono303.out", to: "tape.in" }]);
+    expect(routing.dryToDist.gain.value).toBe(0);
+    expect(routing.dryToMonitor.gain.value).toBe(1);
+    expect(routing.wetToMonitor.gain.value).toBe(0);
+    expect(routing.dryToTape.gain.value).toBe(1);
+    expect(routing.wetToTape.gain.value).toBe(0);
+  });
+
+  // The cable is the truth: an unplugged recorder genuinely captures silence.
+  it("nothing in TAPE's IN: it records nothing", () => {
+    const { routing } = build([{ from: "sono303.out", to: "dist.in" }]);
+    expect(routing.wetToMonitor.gain.value).toBe(1);
+    expect(routing.dryToTape.gain.value).toBe(0);
+    expect(routing.wetToTape.gain.value).toBe(0);
+  });
+
+  it("nothing patched at all: the bare instrument is still heard", () => {
+    const { routing } = build([]);
+    expect(routing.dryToMonitor.gain.value).toBe(1);
+    expect(routing.wetToMonitor.gain.value).toBe(0);
   });
 });
 
-describe("SonoAudioRig patch cable", () => {
-  it("cross-ramps the two branches instead of rewiring", () => {
-    const { rig, synth, dist, direct, patchedGain } = createRig();
+describe("SonoAudioRig repatching", () => {
+  it("cross-ramps gains instead of rewiring", () => {
+    const { rig, routing } = build(FULL_CHAIN);
+    const connectsBefore = toneMock.gains.reduce(
+      (total, gain) => total + gain.connect.mock.calls.length,
+      0,
+    );
 
-    rig.setPatched(true);
+    rig.setConnections([{ from: "sono303.out", to: "tape.in" }]);
 
-    expect(direct.gain.rampTo).toHaveBeenCalledWith(0, 0.03);
-    expect(patchedGain.gain.rampTo).toHaveBeenCalledWith(1, 0.03);
-    // No connect/disconnect while audio may be running: that is what would click.
-    expect(synth.disconnectOutput).not.toHaveBeenCalled();
-    expect(dist.disconnect).not.toHaveBeenCalled();
-    expect(synth.connectOutput).toHaveBeenCalledTimes(2); // constructor only
-    rig.dispose();
+    expect(routing.dryToDist.gain.rampTo).toHaveBeenCalledWith(0, 0.03);
+    expect(routing.dryToMonitor.gain.rampTo).toHaveBeenCalledWith(1, 0.03);
+    expect(routing.dryToTape.gain.rampTo).toHaveBeenCalledWith(1, 0.03);
+    expect(routing.wetToTape.gain.rampTo).toHaveBeenCalledWith(0, 0.03);
+    // Nothing was connected or disconnected: the graph is fixed at build time.
+    const connectsAfter = toneMock.gains.reduce(
+      (total, gain) => total + gain.connect.mock.calls.length,
+      0,
+    );
+    expect(connectsAfter).toBe(connectsBefore);
   });
 
-  it("unplugs symmetrically", () => {
-    const { rig, direct, patchedGain } = createRig(true);
-
-    rig.setPatched(false);
-
-    expect(direct.gain.rampTo).toHaveBeenCalledWith(1, 0.03);
-    expect(patchedGain.gain.rampTo).toHaveBeenCalledWith(0, 0.03);
+  it("ignores a repatch after dispose", () => {
+    const { rig, routing } = build(FULL_CHAIN);
     rig.dispose();
-  });
-
-  it("ignores a redundant patch change", () => {
-    const { rig, direct } = createRig(false);
-    rig.setPatched(false);
-    expect(direct.gain.rampTo).not.toHaveBeenCalled();
-    rig.dispose();
+    routing.dryToDist.gain.rampTo.mockClear();
+    rig.setConnections([]);
+    expect(routing.dryToDist.gain.rampTo).not.toHaveBeenCalled();
   });
 });
 
 describe("SonoAudioRig lifecycle", () => {
   it("dispose() releases both engines and every owned node, once", () => {
-    const { rig, synth, dist } = createRig();
-
+    const { rig, synth, dist } = build(FULL_CHAIN);
     rig.dispose();
     rig.dispose();
 
@@ -216,12 +228,5 @@ describe("SonoAudioRig lifecycle", () => {
       expect(gain.dispose).toHaveBeenCalledTimes(1);
     }
     expect(toneMock.limiters[0].dispose).toHaveBeenCalledTimes(1);
-  });
-
-  it("ignores a patch change after dispose", () => {
-    const { rig, direct } = createRig();
-    rig.dispose();
-    rig.setPatched(true);
-    expect(direct.gain.rampTo).not.toHaveBeenCalled();
   });
 });

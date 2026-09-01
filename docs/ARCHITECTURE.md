@@ -43,6 +43,10 @@ sono-303/
 │   │   ├── distEngineApi.ts    #   SonoDistEngineApi interface
 │   │   ├── SonoDistEngine.ts   #   SONO-DIST effect graph + mode transitions
 │   │   ├── distortionCurves.ts #   Pure transfer curves for the three voicings
+│   │   ├── renderPattern.ts    #   Offline bounce via Tone.Offline
+│   │   ├── wavEncoder.ts       #   Pure Float32 → 24-bit mono RIFF/WAVE
+│   │   ├── LiveRecorder.ts     #   Live capture: worklet tap + bar snapping
+│   │   ├── tapProcessor.worklet.js# The tap, on the audio rendering thread
 │   │   └── SonoAudioRig.ts     #   Owns the whole path and the one route out
 │   ├── sequencer/              # Pure data model — NO React, NO Tone.js
 │   │   ├── types.ts            #   Step, Pattern, SynthParameters, State, Action
@@ -50,6 +54,9 @@ sono-303/
 │   │   ├── distortionMapping.ts#   DRIVE/TONE/LEVEL → Hz, dB, compensation
 │   │   ├── keyMap.ts           #   FL-style computer-key → semitone map
 │   │   ├── velocity.ts         #   Where a note becomes an accent
+│   │   ├── tape.ts             #   Bar/second/sample math for SONO-TAPE
+│   │   ├── liveTake.ts         #   Bar snapping + take clock formatting
+│   │   ├── patchbay.ts         #   Ports, and the one-cable-per-jack rules
 │   │   └── pitch.ts            #   Pitch-class / octave / transpose math
 │   ├── state/                  # React state layer
 │   │   ├── sono303Reducer.ts   #   Pure reducer (serializable in/out)
@@ -62,7 +69,10 @@ sono-303/
 │   │   ├── useComputerKeyboard.ts# Physical keys → notes (FL layout)
 │   │   └── useMidiInput.ts     #   Web MIDI access, device picker, notes
 │   ├── components/             # Presentational React — dispatch only
-│   │   ├── Workbench.tsx       #   Both units + the patch cable between them
+│   │   ├── Workbench.tsx       #   The three devices, inside the patchbay
+│   │   ├── Module.tsx          #   The chassis every device is built from
+│   │   ├── PatchBay.tsx        #   Jack registry, cable drawing, patching
+│   │   ├── patchBayContext.ts  #   How a jack talks to the bay
 │   │   ├── Sono303Panel.tsx    #   Four-zone instrument layout
 │   │   ├── SoundControls.tsx   #   Zone 1: waveform + knobs
 │   │   ├── TransportControls.tsx#  Zone 2: start/stop, mode, tempo, transpose
@@ -73,13 +83,14 @@ sono-303/
 │   │   ├── MidiControls.tsx    #   Zone 2: MIDI permission + device picker
 │   │   ├── SonoDistPanel.tsx   #   SONO-DIST faceplate
 │   │   ├── DistortionModeSelector.tsx# Exclusive four-way voicing selector
-│   │   ├── JackSocket.tsx      #   Panel jack; click/keyboard patch toggle
-│   │   ├── PatchCable.tsx      #   Draggable plug + drawn lead
+│   │   ├── SonoTapePanel.tsx   #   SONO-TAPE: live capture + offline bounce
+│   │   ├── JackSocket.tsx      #   Panel jack; click/keyboard patching
 │   │   └── RotaryKnob.tsx      #   Accessible reusable knob
 │   ├── styles/
 │   │   ├── tokens.css          #   Design tokens (colors, radii, sizes)
 │   │   ├── sono303.css         #   Instrument-specific styling
-│   │   └── sono-dist.css       #   Module, jacks and cable styling
+│   │   ├── sono-dist.css       #   Bench, shared module plate, jacks, cables
+│   │   └── sono-tape.css       #   Recorder styling
 │   ├── App.tsx                 #   Composition root
 │   └── main.tsx                #   Entry: mounts App with provider
 ├── index.html
@@ -110,6 +121,7 @@ flowchart TD
         CURVES[distortionCurves.ts<br/>pure functions]
         RENDER[renderPattern.ts<br/>offline bounce]
         WAV[wavEncoder.ts<br/>pure functions]
+        LIVE[LiveRecorder.ts<br/>worklet tap]
     end
     subgraph SEQ["Pure data model"]
         T[sequencer/types.ts]
@@ -117,11 +129,12 @@ flowchart TD
         D[sequencer/defaults.ts]
         M[sequencer/distortionMapping.ts]
         TAPE[sequencer/tape.ts]
+        BAY[sequencer/patchbay.ts]
     end;
 
     CTX --> H
     H -- setPattern / setParameters / start / stop --> RIG
-    H -- dist.setState / setPatched --> RIG
+    H -- dist.setState / setConnections --> RIG
     RIG --> API
     RIG --> DIST
     API -- stepListener(stepIndex | null) --> H
@@ -134,7 +147,11 @@ flowchart TD
     RENDER -- builds an offline rig --> RIG
     RENDER --> TAPE
     H --> WAV
+    H -- liveRecord --> LIVE
+    RIG --> LIVE
+    RIG --> BAY
     C --> TAPE
+    C --> BAY
     R --> T
     LOGIC --> P
 ```
@@ -171,24 +188,44 @@ periodic once the parameter ramps settle: `s(t) === s(t + T)` for a pattern pass
 the settled region — so its last sample joins its first exactly as it did
 mid-render, with the previous pass's decay tail already ringing at sample zero.
 
-### Signal path
+### Signal path and the patchbay
 
 Exactly one route reaches `Tone.Destination`, and it is owned by
-`SonoAudioRig`:
+`SonoAudioRig`. Every module's output is a permanent bus, and the patchbay is
+nothing but a set of gains between those buses:
 
 ```text
-Sono303Engine.output ─┬─► direct  ──────────────────────────┐
-                      │                                     ├─► master ─► limiter(-1) ─► Destination
-                      └─► SonoDistEngine ─────────► patched ┘
+synth ─► dry ─┬─► dryToDist ──► dist ─► wet ─┬─► wetToMonitor ─┐
+              ├─► dryToMonitor ──────────────────────────────┬─┴─► monitor ─► limiter(-1) ─► Destination
+              └─► dryToTape ─┐               └─► wetToTape ─┐ │
+                             └─────────────► tapeBus ◄─────┘
+                                                └─► LiveRecorder (worklet tap, 0 outputs)
 ```
 
-Both branches stay connected for the session; the patch cable only cross-ramps
-the two gains, so plugging in cannot click and the dry signal can never leak
-out alongside the processed one. Inside `SonoDistEngine`, BYPASS is a real dry
-path through a `Tone.CrossFade`, not a distortion turned down.
+Every gain is derived from `state.connections` by `#applyRouting`. Nothing is
+ever `connect`ed or `disconnect`ed while audio may be running, so repatching
+cannot click. Inside `SonoDistEngine`, BYPASS is a real dry path through a
+`Tone.CrossFade`, not a distortion turned down.
+
+Two rules define what the cables mean:
+
+- **You hear the end of the chain** — SONO-DIST when the instrument runs
+  through it, the bare instrument otherwise, never both at once.
+- **SONO-TAPE captures whatever is in its own IN.** Nothing plugged in means it
+  genuinely records silence. It is deliberately allowed to differ from what you
+  hear: recording dry while monitoring through the distortion is a real thing
+  to want.
+
+A jack holds exactly one cable. `src/sequencer/patchbay.ts` owns those rules as
+pure functions; `PatchBay` draws one lead per connection from the same list, so
+a drawn cable and a real one cannot disagree. Whether SONO-DIST is in the path
+is never stored — it is `isDistPatched(connections)`.
 
 Rules:
 
+- Every device is built from `<Module>`: shell, screws, faceplate and jacks.
+  A module declares its ports and its own controls, and never learns that
+  cables exist — `PatchBay` measures the sockets and draws the leads.
 - `src/components/*` imports from `src/state/*` and `src/sequencer/types.ts`
   only. **Never** from `src/audio/*` and **never** imports `tone`.
 - `src/hooks/useSono303.ts` is the **only** file allowed to import both
@@ -214,7 +251,7 @@ type Sono303State = {
   heldNotes: number[];               // MIDI numbers sounding live (visual)
   parameters: SynthParameters;       // 9 synth/transport values
   steps: Step[];                     // ALWAYS exactly 16
-  patched: boolean;                  // is the cable in SONO-DIST?
+  connections: Connection[];         // every lead currently plugged in
   dist: SonoDistState;               // mode + three normalized knobs
   tape: TapeState;                   // SONO-TAPE bounce length, 1|2|4|8 bars
 };
@@ -289,7 +326,8 @@ All reducer actions (`src/sequencer/types.ts`, `Sono303Action`):
 | `step/changeOctave`           | `delta: -1 \| 1`           | moves window (1..5) and selected pitch (1..6) together |
 | `step/toggleAccent`           | —                          | flip accent (no-op while rest) |
 | `step/toggleSlide`            | —                          | flip slide (no-op while rest) |
-| `patch/set`                   | `patched: boolean`         | plug/unplug the cable into SONO-DIST |
+| `patch/connect`               | `from`, `to`               | plug a lead in; frees whichever jacks it needs |
+| `patch/disconnect`            | `port: PortId`             | pull the lead out of a jack, from either end |
 | `dist/setMode`                | `mode`                     | select one voicing, or `bypass` |
 | `dist/setDrive`               | `value: number`            | DRIVE, clamped to `0..1` |
 | `dist/setTone`                | `value: number`            | TONE, clamped to `0..1` |

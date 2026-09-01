@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { isDistPatched } from "../sequencer/patchbay";
 import { createInitialState, defaultSonoDistState } from "../sequencer/defaults";
 import type { Sono303Action, SonoDistState } from "../sequencer/types";
 import { sono303Reducer } from "./sono303Reducer";
@@ -96,9 +97,11 @@ describe("sonoDistReducer", () => {
 });
 
 describe("sono303Reducer distortion integration", () => {
-  it("boots unplugged", () => {
+  // Wired into the chain on boot, but in BYPASS: the cable is in, and the sound
+  // is still a bare SONO-303 until a voicing is chosen.
+  it("boots patched into the chain but in bypass", () => {
     const state = createInitialState();
-    expect(state.patched).toBe(false);
+    expect(isDistPatched(state.connections)).toBe(true);
     expect(state.dist).toEqual(defaultSonoDistState);
   });
 
@@ -111,15 +114,19 @@ describe("sono303Reducer distortion integration", () => {
     expect(next.parameters).toBe(initial.parameters);
   });
 
-  it("toggles the patch cable without touching the module state", () => {
+  it("moves the patch cable without touching the module state", () => {
     const initial = createInitialState();
-    const patched = sono303Reducer(initial, { type: "patch/set", patched: true });
+    const unplugged = sono303Reducer(initial, {
+      type: "patch/disconnect",
+      port: "dist.in",
+    });
 
-    expect(patched.patched).toBe(true);
-    expect(patched.dist).toBe(initial.dist);
-    expect(sono303Reducer(patched, { type: "patch/set", patched: true })).toBe(
-      patched,
-    );
+    expect(isDistPatched(unplugged.connections)).toBe(false);
+    expect(unplugged.dist).toBe(initial.dist);
+    // Already unplugged: the identical state comes back.
+    expect(
+      sono303Reducer(unplugged, { type: "patch/disconnect", port: "dist.in" }),
+    ).toBe(unplugged);
   });
 
   it("does not clone the root state when a dist action changes nothing", () => {

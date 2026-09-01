@@ -5,6 +5,7 @@ import {
   STEP_COUNT,
   parameterRanges,
 } from "../sequencer/defaults";
+import { connect, disconnectPort } from "../sequencer/patchbay";
 import type {
   Sono303Action,
   Sono303State,
@@ -225,10 +226,15 @@ export function sono303Reducer(
     case "notes/releaseAll":
       return state.heldNotes.length === 0 ? state : { ...state, heldNotes: [] };
 
-    case "patch/set":
-      return action.patched === state.patched
-        ? state
-        : { ...state, patched: action.patched };
+    case "patch/connect": {
+      const connections = connect(state.connections, action.from, action.to);
+      return connections === state.connections ? state : { ...state, connections };
+    }
+
+    case "patch/disconnect": {
+      const connections = disconnectPort(state.connections, action.port);
+      return connections === state.connections ? state : { ...state, connections };
+    }
 
     case "dist/setMode":
     case "dist/setDrive":

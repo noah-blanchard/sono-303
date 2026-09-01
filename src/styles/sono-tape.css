@@ -18,22 +18,18 @@
   gap: 0;
 }
 
-.tape-header {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  justify-items: center;
+/* The shared brand plate, tightened: this unit has to stay shallow. */
+.tape-panel .module-header {
   padding: clamp(10px, 1.4vw, 14px) 14px clamp(6px, 1vw, 9px);
+  gap: 1px;
 }
 
-.tape-brand {
-  margin: 0;
-  font-family: var(--font-condensed);
+.tape-panel .module-brand {
   font-size: clamp(1.15rem, 2.3vw, 1.45rem);
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  color: var(--ink);
-  text-transform: uppercase;
+}
+
+.tape-panel .module-subtitle {
+  font-size: 0.5625rem;
 }
 
 .tape-controls {

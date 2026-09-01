@@ -68,7 +68,8 @@
   gap: 0;
 }
 
-.dist-header {
+/* The brand plate every module shares, via <Module>. */
+.module-header {
   position: relative;
   z-index: 1;
   display: grid;
@@ -77,7 +78,7 @@
   padding: clamp(16px, 2.2vw, 24px) 16px clamp(14px, 2vw, 20px);
 }
 
-.dist-brand {
+.module-brand {
   margin: 0;
   font-family: var(--font-condensed);
   font-size: clamp(1.5rem, 3.4vw, 2rem);
@@ -87,7 +88,7 @@
   text-transform: uppercase;
 }
 
-.dist-subtitle {
+.module-subtitle {
   margin: 0;
   font-size: var(--label-size);
   font-weight: 700;
@@ -274,6 +275,21 @@
 }
 
 /* A seated plug fills the hole, so the socket reads as occupied on its own. */
+/* Holding the loose end: the socket it came from stays lit so it is obvious
+   where the lead is anchored. */
+.jack__socket.is-armed {
+  outline: 2px solid var(--accent-red);
+  outline-offset: 2px;
+}
+
+/* Somewhere the armed lead could legally land. Never colour alone — the socket
+   also lifts, and its accessible label says what the click will do. */
+.jack__socket.is-target {
+  outline: 2px dashed var(--accent-red);
+  outline-offset: 2px;
+  transform: scale(1.06);
+}
+
 .jack__socket.is-connected .jack__hole {
   background: radial-gradient(circle at 45% 30%, #d9dcda, #8d9395 65%, #3d4345);
   box-shadow: inset 0 1px 2px rgb(0 0 0 / 45%);
@@ -298,6 +314,12 @@
 }
 
 /* ----------------------------------------------------------------- cable */
+
+/* The loose end, hanging from the jack it was picked up from. */
+.patch__cable--loose {
+  opacity: 0.75;
+  stroke-dasharray: 7 5;
+}
 
 /* Above the sockets (z 3): a seated plug has to stay grabbable, or the cable
    could be plugged in by drag but only pulled out by click. */

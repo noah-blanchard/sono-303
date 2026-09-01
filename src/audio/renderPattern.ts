@@ -1,6 +1,11 @@
 import * as Tone from "tone";
 import { EXPORT_SAMPLE_RATE, barsToSamples } from "../sequencer/tape";
-import type { Pattern, SonoDistState, SynthParameters } from "../sequencer/types";
+import type {
+  Connection,
+  Pattern,
+  SonoDistState,
+  SynthParameters,
+} from "../sequencer/types";
 import { SonoAudioRig } from "./SonoAudioRig";
 
 /**
@@ -32,7 +37,8 @@ export type RenderRequest = {
   steps: Pattern;
   parameters: SynthParameters;
   dist: SonoDistState;
-  patched: boolean;
+  /** The bench's patching, so a bounce matches what the cables say. */
+  connections: Connection[];
   bars: number;
   /** Defaults to `EXPORT_SAMPLE_RATE`; overridable for tests. */
   sampleRate?: number;
@@ -48,7 +54,7 @@ export type RenderResult = {
 export async function renderPattern(
   request: RenderRequest,
 ): Promise<RenderResult> {
-  const { steps, parameters, dist, patched, bars } = request;
+  const { steps, parameters, dist, connections, bars } = request;
   const rate = request.sampleRate ?? EXPORT_SAMPLE_RATE;
 
   const keepSamples = barsToSamples(bars, parameters.tempoBpm, rate);
@@ -67,7 +73,7 @@ export async function renderPattern(
       // voicing swap around a real `setTimeout(18)` — that timer would fire long
       // after this render has finished, leaving the buffer faded to dry with the
       // wrong curve. The constructor path applies the voicing with no timer.
-      rig = new SonoAudioRig({ patched, dist });
+      rig = new SonoAudioRig({ connections, dist });
       rig.synth.setPattern(steps);
       rig.synth.setParameters(parameters);
 

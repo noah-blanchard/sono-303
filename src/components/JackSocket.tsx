@@ -1,43 +1,58 @@
-import type { Ref } from "react";
+import { useEffect, useRef } from "react";
+import { PORTS } from "../sequencer/patchbay";
+import type { PortId } from "../sequencer/types";
+import { usePatchBay } from "./patchBayContext";
 
 export type JackSocketProps = {
-  label: string;
-  /** Accessible description of what toggling this socket does. */
-  actionLabel: string;
-  connected: boolean;
-  onToggle: () => void;
-  ref?: Ref<HTMLButtonElement>;
-  /** Right-hand socket on the 303, left-hand socket on the module. */
-  side: "out" | "in";
+  port: PortId;
+  /** Human name of the module, for the socket's accessible label. */
+  moduleName: string;
 };
 
 /**
  * A quarter-inch jack socket on a panel edge.
  *
- * It is a real button, not just a drag target: dragging the plug is the
- * tactile path, but click, Enter and Space have to work too, or the patch
- * cable would be unusable by keyboard and awkward on touch.
+ * It is a real button, so patching works by click, Enter and Space alike —
+ * there is no drag-only path that a keyboard could not reach. It knows nothing
+ * about cables: it registers itself with the patchbay and reports clicks.
  */
-export function JackSocket({
-  label,
-  actionLabel,
-  connected,
-  onToggle,
-  ref,
-  side,
-}: JackSocketProps) {
+export function JackSocket({ port, moduleName }: JackSocketProps) {
+  const bay = usePatchBay();
+  const ref = useRef<HTMLButtonElement>(null);
+  const { registerPort } = bay;
+  const { direction, label } = PORTS[port];
+
+  useEffect(() => {
+    registerPort(port, ref.current);
+    return () => registerPort(port, null);
+  }, [registerPort, port]);
+
+  const patched = bay.isPatched(port);
+  const armed = bay.armed === port;
+  const target = bay.canLandOn(port);
+
+  const action = armed
+    ? `Put the lead back down`
+    : target
+      ? `Plug the lead into ${moduleName} ${label}`
+      : patched
+        ? `Unplug the lead from ${moduleName} ${label}`
+        : `Pick up a lead from ${moduleName} ${label}`;
+
   return (
-    <div className={`jack jack--${side}`}>
+    <div className={`jack jack--${direction}`}>
       <span className="jack__label" aria-hidden="true">
         {label}
       </span>
       <button
         type="button"
         ref={ref}
-        className={`jack__socket${connected ? " is-connected" : ""}`}
-        aria-pressed={connected}
-        aria-label={actionLabel}
-        onClick={onToggle}
+        className={`jack__socket${patched ? " is-connected" : ""}${
+          armed ? " is-armed" : ""
+        }${target ? " is-target" : ""}`}
+        aria-pressed={patched}
+        aria-label={action}
+        onClick={() => bay.selectPort(port)}
       >
         <span className="jack__ring" aria-hidden="true" />
         <span className="jack__hole" aria-hidden="true" />

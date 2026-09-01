@@ -1,16 +1,14 @@
-import type { Ref } from "react";
 import { defaultSonoDistState } from "../sequencer/defaults";
+import { isDistPatched } from "../sequencer/patchbay";
 import {
   mapLevelToDb,
   mapToneToFrequency,
 } from "../sequencer/distortionMapping";
 import { useSono303Dispatch, useSono303State } from "../state/hooks";
 import { DistortionModeSelector } from "./DistortionModeSelector";
-import { JackSocket } from "./JackSocket";
+import { Module } from "./Module";
 import { RotaryKnob } from "./RotaryKnob";
 import { formatDecibels, formatHz, formatPercent } from "./knobScales";
-
-const SCREW_CORNERS = ["tl", "tr", "bl", "br"] as const;
 
 /** Knob readouts translate the normalized value into what the ear will hear. */
 function formatTone(value: number): string {
@@ -21,10 +19,6 @@ function formatLevel(value: number): string {
   return formatDecibels(mapLevelToDb(value));
 }
 
-export type SonoDistPanelProps = {
-  inputJackRef?: Ref<HTMLButtonElement>;
-};
-
 /**
  * SONO-DIST: the distortion module, a separate device standing beside the
  * instrument.
@@ -34,38 +28,23 @@ export type SonoDistPanelProps = {
  * stored — from the cable and the mode together, so it cannot drift out of
  * step with either.
  */
-export function SonoDistPanel({ inputJackRef }: SonoDistPanelProps) {
-  const { dist, patched } = useSono303State();
+export function SonoDistPanel() {
+  const { dist, connections } = useSono303State();
   const dispatch = useSono303Dispatch();
+  const patched = isDistPatched(connections);
   const active = patched && dist.mode !== "bypass";
 
   return (
-    <div className={`panel-shell dist-shell${patched ? "" : " is-unplugged"}`}>
-      {SCREW_CORNERS.map((corner) => (
-        <span
-          key={corner}
-          className={`panel-shell__screw panel-shell__screw--${corner}`}
-          aria-hidden="true"
-        />
-      ))}
-
-      <JackSocket
-        side="in"
-        label="IN"
-        connected={patched}
-        actionLabel={
-          patched
-            ? "Unplug the cable from SONO-DIST"
-            : "Plug the cable into SONO-DIST"
-        }
-        onToggle={() => dispatch({ type: "patch/set", patched: !patched })}
-        ref={inputJackRef}
-      />
-
-      <section className="panel dist-panel" aria-label="SONO-DIST distortion module">
-        <header className="dist-header">
-          <h2 className="dist-brand">SONO-DIST</h2>
-          <p className="dist-subtitle">DISTORTION MODULE</p>
+    <Module
+      name="SONO-DIST"
+      subtitle="DISTORTION MODULE"
+      ports={["dist.in", "dist.out"]}
+      className={`dist-shell${patched ? "" : " is-unplugged"}`}
+      panelClassName="dist-panel"
+      header={
+        <header className="module-header">
+          <h2 className="module-brand">SONO-DIST</h2>
+          <p className="module-subtitle">DISTORTION MODULE</p>
           <div className="dist-active">
             <span className="control-label">ACTIVE</span>
             <span
@@ -77,7 +56,8 @@ export function SonoDistPanel({ inputJackRef }: SonoDistPanelProps) {
             </span>
           </div>
         </header>
-
+      }
+    >
         <div className="dist-knobs">
           <RotaryKnob
             label="DRIVE"
@@ -120,7 +100,6 @@ export function SonoDistPanel({ inputJackRef }: SonoDistPanelProps) {
             onChange={(mode) => dispatch({ type: "dist/setMode", mode })}
           />
         </div>
-      </section>
-    </div>
+    </Module>
   );
 }

@@ -81,6 +81,12 @@ export type TapeState = {
   bars: TapeBars;
 };
 
+/** Every jack on the bench. `module.direction` reads as it is wired. */
+export type PortId = "sono303.out" | "dist.in" | "dist.out" | "tape.in";
+
+/** One lead, always from an output jack to an input jack. */
+export type Connection = { from: PortId; to: PortId };
+
 export type Sono303State = {
   mode: Mode;
   transport: TransportState;
@@ -98,8 +104,12 @@ export type Sono303State = {
   heldNotes: number[];
   parameters: SynthParameters;
   steps: Pattern;
-  /** Whether the patch cable routes SONO-303 through SONO-DIST. */
-  patched: boolean;
+  /**
+   * Every lead currently plugged in. Both the drawn cables and the audio graph
+   * are derived from this, so they cannot disagree. Whether SONO-DIST is in the
+   * path is never stored — it is `isDistPatched(connections)`.
+   */
+  connections: Connection[];
   dist: SonoDistState;
   tape: TapeState;
 };
@@ -124,7 +134,8 @@ export type Sono303Action =
   | { type: "ui/toggleKeyHints" }
   | { type: "notes/setHeld"; midi: number; held: boolean }
   | { type: "notes/releaseAll" }
-  | { type: "patch/set"; patched: boolean }
+  | { type: "patch/connect"; from: PortId; to: PortId }
+  | { type: "patch/disconnect"; port: PortId }
   | { type: "dist/setMode"; mode: DistortionMode }
   | { type: "dist/setDrive"; value: number }
   | { type: "dist/setTone"; value: number }

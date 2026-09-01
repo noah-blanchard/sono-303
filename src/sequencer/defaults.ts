@@ -1,4 +1,5 @@
 import type {
+  Connection,
   Pattern,
   Sono303State,
   SonoDistState,
@@ -72,6 +73,19 @@ export const defaultTapeState: TapeState = {
   bars: 1,
 };
 
+/**
+ * Boot patching: the full chain, 303 through SONO-DIST into SONO-TAPE.
+ *
+ * Everything is wired on purpose. An unpatched bench would be silent on load,
+ * and a recorder with nothing plugged into it records nothing — neither is a
+ * good first impression. SONO-DIST still boots in BYPASS, so the sound is a
+ * bare SONO-303 until a voicing is chosen.
+ */
+export const defaultConnections: Connection[] = [
+  { from: "sono303.out", to: "dist.in" },
+  { from: "dist.out", to: "tape.in" },
+];
+
 export function createDefaultPattern(): Pattern {
   return Array.from({ length: STEP_COUNT }, () => ({ ...defaultStep }));
 }
@@ -87,7 +101,7 @@ export function createInitialState(): Sono303State {
     heldNotes: [],
     parameters: { ...defaultParameters },
     steps: createDefaultPattern(),
-    patched: false,
+    connections: defaultConnections.map((cable) => ({ ...cable })),
     dist: { ...defaultSonoDistState },
     tape: { ...defaultTapeState },
   };

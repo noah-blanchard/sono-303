@@ -7,9 +7,8 @@ import {
   useSono303State,
   useWavExport,
 } from "../state/hooks";
+import { Module } from "./Module";
 import { formatSeconds } from "./knobScales";
-
-const SCREW_CORNERS = ["tl", "tr", "bl", "br"] as const;
 
 /** How often the running time and the recorder's state are re-read. */
 const CLOCK_POLL_MS = 100;
@@ -44,9 +43,10 @@ const RECORD_ACTION: Record<RecordState, string> = {
 /**
  * SONO-TAPE: the recorder, standing under SONO-DIST.
  *
- * It has no jack. It sits at the end of the chain, so whatever the instrument
- * is making — through SONO-DIST or not — is what lands in the file, at the
- * level the VOLUME knob and the limiter set.
+ * Its IN jack is the truth about what it captures: patch SONO-DIST's OUT into
+ * it to record the processed sound, or SONO-303's OUT straight in to record the
+ * bare instrument while still monitoring through the distortion. With nothing
+ * plugged in it records silence, exactly as the hardware would.
  *
  * Two ways out, because they answer different questions. **LIVE** taps the
  * real-time bus, so a CUTOFF sweep, a hand-played note or the cable going in
@@ -129,20 +129,13 @@ export function SonoTapePanel() {
   }, [liveRecord, recordState]);
 
   return (
-    <div className="panel-shell tape-shell">
-      {SCREW_CORNERS.map((corner) => (
-        <span
-          key={corner}
-          className={`panel-shell__screw panel-shell__screw--${corner}`}
-          aria-hidden="true"
-        />
-      ))}
-
-      <section className="panel tape-panel" aria-label="SONO-TAPE wav recorder">
-        <header className="tape-header">
-          <h2 className="tape-brand">SONO-TAPE</h2>
-        </header>
-
+    <Module
+      name="SONO-TAPE"
+      subtitle="WAV RECORDER"
+      ports={["tape.in"]}
+      className="tape-shell"
+      panelClassName="tape-panel"
+    >
         <div className="tape-controls">
           <div className="tape-row">
             <span className="tape-row__title">LIVE</span>
@@ -223,7 +216,6 @@ export function SonoTapePanel() {
             {EXPORT_TEXT[exportStatus]} · 48K 24-BIT MONO
           </p>
         </div>
-      </section>
-    </div>
+    </Module>
   );
 }

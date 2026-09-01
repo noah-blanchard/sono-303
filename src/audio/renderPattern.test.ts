@@ -64,7 +64,7 @@ vi.mock("tone", () => ({
 }));
 
 const rigMock = vi.hoisted(() => {
-  const constructed: { patched: boolean; dist: unknown }[] = [];
+  const constructed: { connections: unknown; dist: unknown }[] = [];
   return {
     constructed,
     setPattern: vi.fn(),
@@ -95,7 +95,7 @@ vi.mock("./SonoAudioRig", () => ({
     };
     dist = { setState: rigMock.setState };
     dispose = rigMock.dispose;
-    constructor(options: { patched: boolean; dist: unknown }) {
+    constructor(options: { connections: unknown; dist: unknown }) {
       rigMock.constructed.push(options);
       toneMock.calls.push("construct");
     }
@@ -112,7 +112,7 @@ function request(overrides: { bars?: number; tempoBpm?: number } = {}) {
       tempoBpm: overrides.tempoBpm ?? defaultParameters.tempoBpm,
     },
     dist: { ...defaultSonoDistState, mode: "turbo" as const },
-    patched: true,
+    connections: [{ from: "sono303.out" as const, to: "dist.in" as const }],
     bars: overrides.bars ?? 1,
   };
 }
@@ -177,7 +177,7 @@ describe("renderPattern", () => {
     const input = request();
     await renderPattern(input);
     expect(rigMock.constructed).toEqual([
-      { patched: true, dist: input.dist },
+      { connections: input.connections, dist: input.dist },
     ]);
     expect(rigMock.setState).not.toHaveBeenCalled();
   });

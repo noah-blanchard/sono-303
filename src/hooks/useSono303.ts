@@ -113,8 +113,8 @@ export function useSono303(createEngine?: Sono303EngineFactory): Sono303Host {
   }, [state.dist]);
 
   useEffect(() => {
-    rigRef.current?.setPatched(state.patched);
-  }, [state.patched]);
+    rigRef.current?.setConnections(state.connections);
+  }, [state.connections]);
 
   useEffect(() => {
     const rig = rigRef.current;
@@ -160,12 +160,12 @@ export function useSono303(createEngine?: Sono303EngineFactory): Sono303Host {
       // not happen mid-render.
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-      const { steps, parameters, dist, patched, tape } = stateRef.current;
+      const { steps, parameters, dist, connections, tape } = stateRef.current;
       const { samples, sampleRate } = await renderPattern({
         steps,
         parameters,
         dist,
-        patched,
+        connections,
         bars: tape.bars,
       });
       saveWav(

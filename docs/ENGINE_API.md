@@ -258,8 +258,9 @@ returns two capabilities, which `App` publishes through their contexts:
 
 ```ts
 type Sono303Host = {
-  noteGate: NoteGate;    // NoteGateContext   — live play
-  exportWav: WavExport;  // WavExportContext  — the SONO-TAPE bounce
+  noteGate: NoteGate;      // NoteGateContext    — live play
+  exportWav: WavExport;    // WavExportContext   — the SONO-TAPE bounce
+  liveRecord: LiveRecord;  // LiveRecordContext  — SONO-TAPE live capture
 };
 ```
 
@@ -328,7 +329,7 @@ type RenderRequest = {
   steps: Pattern;
   parameters: SynthParameters;
   dist: SonoDistState;
-  patched: boolean;
+  connections: Connection[];   // the bench's patching
   bars: number;
   sampleRate?: number;      // defaults to EXPORT_SAMPLE_RATE (48000)
 };
@@ -365,3 +366,56 @@ Contract notes:
 | `renderPattern.ts` | `src/audio/renderPattern.ts`  | The offline bounce, and the four rules above. |
 | `wavEncoder.ts`    | `src/audio/wavEncoder.ts`     | Float32 → 24-bit mono PCM RIFF/WAVE bytes. Pure and DOM-free, so it returns `Uint8Array`, not a `Blob`. |
 | `tape.ts`          | `src/sequencer/tape.ts`       | Bar/second/sample math and the file name. In the data model so the panel can print the duration without importing `src/audio/`. |
+
+## 11. Live capture — `LiveRecorder`
+
+The offline bounce replays the pattern against one frozen snapshot of the
+parameters, so a knob swept during playback cannot exist in it. `LiveRecorder`
+records the real-time graph instead: knob moves, hand-played notes, MIDI, and
+the cable going into SONO-DIST mid-phrase all end up in the take.
+
+```ts
+// src/audio/LiveRecorder.ts
+type LiveRecordState = "idle" | "armed" | "recording";
+type LiveTake = {
+  samples: Float32Array;
+  sampleRate: number;
+  snappedBars: number | null;   // null when the take was not bar-snapped
+};
+
+class LiveRecorder {
+  setSource(source: Tone.ToneAudioNode): void;   // the rig's tape bus
+  arm(tempoBpm: number, maxSeconds?: number): Promise<void>;
+  stop(): Promise<LiveTake | null>;              // null when cancelled while armed
+  onAutoStop(callback: () => void): void;        // the length cap fired
+  get state(): LiveRecordState;
+  get frames(): number;                          // captured since the take opened
+  dispose(): void;
+}
+```
+
+Contract notes:
+
+- **Lossless.** An `AudioWorkletNode` with **zero outputs** taps the tape bus
+  and posts raw Float32 in 4096-frame chunks; the same 24-bit encoder writes the
+  file. `MediaRecorder` would give lossy webm-opus or mp4-aac depending on the
+  browser. Being a zero-output leaf is also what keeps the rig's "exactly one
+  route to `Tone.Destination`" guarantee intact.
+- **The worklet is loaded from a blob URL**, not a `?url` import: the file is
+  under Vite's 4 KB inline limit, so `?url` yields a `data:` URL and
+  `audioWorklet.addModule` refuses those. Created lazily on the first REC press,
+  which is also the user gesture that unlocks the context.
+- **Use `context.createAudioWorkletNode(...)`**, never
+  `new AudioWorkletNode(context.rawContext, …)` — `rawContext` is a wrapper and
+  the native constructor rejects it.
+- **Bar snapping is sample-exact.** The worklet stamps its first chunk with
+  `currentFrame`; `Transport.schedule` hands back the *audio-context time* of
+  each bar boundary; the take is trimmed to `[beginFrame, endFrame)`.
+- **Snapping is conditional on there being a grid.** With the transport running
+  the take opens on the next downbeat and closes on a boundary. With it stopped
+  there is nothing to snap to — the live-keyboard case — so it opens and closes
+  at once.
+- **The rate is the hardware's.** Unlike the offline bounce, live capture cannot
+  insist on 48 kHz; the header declares whatever the context gave.
+- **Capped at five minutes** (~57 MB of Float32), after which it stops itself
+  and reports through `onAutoStop` rather than growing until the tab dies.
