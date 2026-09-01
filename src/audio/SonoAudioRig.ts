@@ -3,6 +3,7 @@ import { defaultSonoDistState } from "../sequencer/defaults";
 import type { SonoDistState } from "../sequencer/types";
 import type { Sono303EngineApi, Sono303EngineFactory } from "./engineApi";
 import type { SonoDistEngineApi } from "./distEngineApi";
+import { LiveRecorder } from "./LiveRecorder";
 import { Sono303Engine } from "./Sono303Engine";
 import { SonoDistEngine } from "./SonoDistEngine";
 
@@ -38,6 +39,15 @@ export type SonoAudioRigOptions = {
 export class SonoAudioRig {
   readonly synth: Sono303EngineApi;
   readonly dist: SonoDistEngineApi;
+  /**
+   * SONO-TAPE's live capture tap, hung off the limiter.
+   *
+   * It does not break the one-route-out rule: the tap is an
+   * `AudioWorkletNode` with zero outputs, so it is a leaf that listens rather
+   * than a second path to the destination. It also stays dormant — no worklet
+   * is even loaded — until the first REC press.
+   */
+  readonly recorder = new LiveRecorder();
 
   /** Unplugged branch: the bare instrument. */
   readonly #direct = new Tone.Gain(1);
@@ -68,6 +78,8 @@ export class SonoAudioRig {
     this.#direct.connect(this.#master);
     this.#patched.connect(this.#master);
     this.#master.chain(this.#limiter, Tone.getDestination());
+    // Post-limiter, so a take is exactly what came out of the speakers.
+    this.recorder.setSource(this.#limiter);
 
     this.#direct.gain.value = patched ? 0 : 1;
     this.#patched.gain.value = patched ? 1 : 0;
@@ -89,6 +101,7 @@ export class SonoAudioRig {
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
+    this.recorder.dispose();
     this.synth.dispose();
     this.dist.dispose();
     this.#direct.dispose();

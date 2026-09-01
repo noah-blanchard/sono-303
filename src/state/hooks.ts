@@ -3,12 +3,19 @@ import type { Dispatch } from "react";
 import type { Sono303Action, Sono303State } from "../sequencer/types";
 import {
   DispatchContext,
+  LiveRecordContext,
   MidiContext,
   NoteGateContext,
   StateContext,
   WavExportContext,
 } from "./contexts";
-import type { AuditionNote, MidiState, NoteGate, WavExport } from "./contexts";
+import type {
+  AuditionNote,
+  LiveRecord,
+  MidiState,
+  NoteGate,
+  WavExport,
+} from "./contexts";
 
 export type Sono303Dispatch = Dispatch<Sono303Action>;
 
@@ -43,6 +50,11 @@ export function useAuditionNote(): AuditionNote {
 /** The SONO-TAPE bounce. Rejects when no audio host is mounted. */
 export function useWavExport(): WavExport {
   return useContext(WavExportContext);
+}
+
+/** SONO-TAPE's live capture. Rejects when no audio host is mounted. */
+export function useLiveRecord(): LiveRecord {
+  return useContext(LiveRecordContext);
 }
 
 /** MIDI connection state. Reports `idle` when no live input host is mounted. */

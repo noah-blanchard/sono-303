@@ -742,7 +742,6 @@
 .transport-button:focus-visible,
 .segmented__option:focus-visible,
 .step__button:focus-visible,
-.tape-handle:focus-visible,
 .key:focus-visible {
   outline: 2px solid var(--accent-red);
   outline-offset: 2px;
@@ -1249,10 +1248,13 @@
   .step__button,
   .key,
   .key--white,
-  .key--black,
-  .tape-handle,
-  .tape-scrim,
-  .tape-drawer__tray {
+  .key--black {
     transition: none;
+  }
+
+  /* The armed lamp settles rather than blinking. It stays distinguishable from
+     the rolling one, because the status line spells both out in words. */
+  .led--transport.is-blinking {
+    animation: none;
   }
 }

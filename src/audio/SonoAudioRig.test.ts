@@ -43,13 +43,19 @@ const toneMock = vi.hoisted(() => {
     }
   }
 
+  // The rig hangs SONO-TAPE's capture tap off the limiter, and disposing that
+  // tap clears anything it scheduled — so the transport has to exist here now.
+  const transport = { schedule: vi.fn(() => 1), clear: vi.fn(), state: "stopped" };
+
   return {
     gains,
     limiters,
     destination,
+    transport,
     FakeGain,
     FakeLimiter,
     getDestination: vi.fn(() => destination),
+    getTransport: vi.fn(() => transport),
   };
 });
 
@@ -57,6 +63,13 @@ vi.mock("tone", () => ({
   Gain: toneMock.FakeGain,
   Limiter: toneMock.FakeLimiter,
   getDestination: toneMock.getDestination,
+  getTransport: toneMock.getTransport,
+  start: vi.fn(async () => {}),
+  getContext: vi.fn(() => ({
+    sampleRate: 48000,
+    rawContext: {},
+    addAudioWorkletModule: vi.fn(async () => {}),
+  })),
 }));
 
 const { SonoAudioRig } = await import("./SonoAudioRig");

@@ -1,140 +1,15 @@
-/* SONO-TAPE — the WAV recorder, kept in a drawer at the right edge of the bench.
+/* SONO-TAPE — the WAV recorder, standing under SONO-DIST in the rack.
    Every colour and metric comes from tokens.css; nothing is hard-coded here.
    The shell, screws, buttons and LEDs are the shared panel language, so this
-   file only holds what is specific to the recorder. */
+   file only holds what is specific to the recorder.
 
-/* ----------------------------------------------------------------- drawer */
+   Kept deliberately shallow: SONO-DIST and this unit together should stand
+   about as tall as the instrument beside them, so the bench reads as one rack
+   rather than a column that runs off the bottom of the screen. */
 
-/* Dims the bench so the drawer is unmistakably the thing in front. No blur:
-   the panel stays readable underneath, and it is cheaper to paint. */
-.tape-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  background: rgb(0 0 0 / 55%);
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    opacity 200ms ease,
-    visibility 0s linear 200ms;
-}
-
-.tape-scrim.is-open {
-  opacity: 1;
-  visibility: visible;
-  transition:
-    opacity 200ms ease,
-    visibility 0s;
-}
-
-/* Anchored to the middle of the right edge: the handle is always in the same
-   place, whatever the bench below is doing. */
-.tape-drawer {
-  position: fixed;
-  top: 50%;
-  right: 0;
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  transform: translateY(-50%);
-  /* Only the handle and an open tray take clicks; the parked tray's box must
-     not swallow anything happening on the bench beside it. */
-  pointer-events: none;
-}
-
-/* The tray parks inside here while shut. Without the clip, a drawer hanging off
-   the right edge would widen the document and bring back the scrollbar this
-   whole arrangement exists to remove. Padding (cancelled by the negative
-   margin) leaves the shell's drop shadow somewhere to fall. */
-.tape-drawer__clip {
-  overflow: hidden;
-  padding: 22px;
-  margin: -22px;
-}
-
-.tape-drawer__tray {
-  width: clamp(272px, 26vw, 336px);
-  transform: translateX(calc(100% + 30px));
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    transform 280ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    opacity 180ms ease;
-}
-
-.tape-drawer.is-open .tape-drawer__tray {
-  transform: translateX(0);
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* The drawer face: a pull moulded like the panel buttons, turned on its side. */
-.tape-handle {
-  pointer-events: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  min-width: 40px;
-  padding: 20px 10px;
-  border: 1px solid var(--control-edge);
-  border-right: none;
-  border-radius: var(--control-radius) 0 0 var(--control-radius);
-  background: linear-gradient(
-    90deg,
-    #eef0ee 0 6%,
-    var(--bezel-light) 18%,
-    var(--control-face) 55%,
-    var(--bezel-dark) 88%,
-    var(--bezel-darker) 100%
-  );
-  box-shadow:
-    -3px 0 10px rgb(0 0 0 / 45%),
-    inset 0 1px 0 var(--rim-light),
-    inset 0 -1px 0 rgb(0 0 0 / 45%);
-  cursor: pointer;
-  transition:
-    filter var(--transition-fast),
-    transform var(--transition-fast);
-}
-
-.tape-handle:hover {
-  filter: brightness(1.06);
-}
-
-/* Pressed in, the way the drawer would sit against its stop. */
-.tape-handle:active,
-.tape-drawer.is-open .tape-handle {
-  transform: translateX(2px);
-}
-
-/* Ridged grip, like the moulded pull on a cassette door. */
-.tape-handle__grip {
-  width: 16px;
-  height: 11px;
-  border-radius: 1px;
-  background: repeating-linear-gradient(
-    180deg,
-    var(--bezel-darker) 0 1px,
-    var(--bezel-light) 1px 3px
-  );
-  box-shadow: inset 0 0 2px rgb(0 0 0 / 45%);
-}
-
-.tape-handle__label {
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  font-size: var(--label-size);
-  font-weight: 700;
-  letter-spacing: 0.22em;
-  color: var(--ink);
-  text-transform: uppercase;
-}
-
-/* ------------------------------------------------------------------ panel */
-
+/* Matches .dist-shell so the two units in the rack line up edge to edge. */
 .tape-shell {
-  width: 100%;
+  width: clamp(268px, 25vw, 330px);
   max-width: 100%;
 }
 
@@ -148,96 +23,150 @@
   z-index: 1;
   display: grid;
   justify-items: center;
-  gap: 4px;
-  padding: clamp(16px, 2.2vw, 24px) 16px clamp(12px, 1.8vw, 18px);
+  padding: clamp(10px, 1.4vw, 14px) 14px clamp(6px, 1vw, 9px);
 }
 
 .tape-brand {
   margin: 0;
   font-family: var(--font-condensed);
-  font-size: clamp(1.5rem, 3.4vw, 2rem);
+  font-size: clamp(1.15rem, 2.3vw, 1.45rem);
   font-weight: 800;
   letter-spacing: 0.03em;
   color: var(--ink);
   text-transform: uppercase;
 }
 
-.tape-subtitle {
-  margin: 0;
-  font-size: var(--label-size);
+.tape-controls {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 0 12px clamp(10px, 1.4vw, 14px);
+}
+
+/* Controls run across rather than stack, and each row carries its own label —
+   the unit has to stay shallow enough that it plus SONO-DIST stand about as
+   tall as the instrument beside them. */
+.tape-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.tape-row__title {
+  min-width: 3.4rem;
+  font-size: 0.625rem;
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   color: var(--muted-ink);
   text-transform: uppercase;
 }
 
-.tape-controls {
-  display: grid;
-  justify-items: center;
-  gap: clamp(14px, 2vw, 20px);
-  padding: 0 16px clamp(18px, 2.4vw, 26px);
+/* Shorter than the panel default: a 44px stack of them would not fit. */
+.panel-button--tape {
+  min-height: 36px;
+  min-width: 0;
+  padding: 0 12px;
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
 }
 
-/* Dark inset screen, the same recipe as the tempo readout: the render settings
-   are a machine report, not a control, so they read as lit glass. */
-.tape-display {
-  position: relative;
-  display: grid;
-  justify-items: center;
-  gap: 3px;
-  /* Fixed width so the box never breathes as the tempo changes the duration. */
-  width: 11rem;
-  padding: 9px 0;
-  border-radius: var(--control-radius);
-  border: 1px solid var(--control-edge);
-  background:
-    repeating-linear-gradient(
-      180deg,
-      rgb(255 255 255 / 3%) 0 1px,
-      transparent 1px 3px
-    ),
-    linear-gradient(180deg, #0c0e0f, var(--inset-dark));
-  box-shadow:
-    inset 0 3px 10px rgb(0 0 0 / 85%),
-    inset 0 -1px 2px rgb(255 255 255 / 8%),
-    0 1px 0 var(--highlight);
+.panel-button--grow {
+  flex: 1;
 }
 
-/* Same raking sheen the other glass panels catch. */
-.tape-display::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
+/* Tighter pills, so BOUNCE's four options and the duration share one row. */
+.segmented--tape .segmented__option {
+  min-height: 28px;
+  padding: 0 10px;
+}
+
+/* The unit stands lowest on the bench, so its floor bounce falls off the page
+   and adds 130px of scroll to a layout that otherwise fits. Nothing is below it
+   to catch the light anyway. */
+.tape-shell::after {
+  display: none;
+}
+
+/* Engraved rule between LIVE and BOUNCE: two jobs on one faceplate. */
+.tape-divider {
+  width: 82%;
+  height: 2px;
+  margin: 2px 0;
+  border-radius: 1px;
   background: linear-gradient(
-    118deg,
-    rgb(255 255 255 / 10%) 0%,
-    rgb(255 255 255 / 3%) 28%,
-    transparent 46%
+    180deg,
+    rgb(0 0 0 / 22%) 0 1px,
+    var(--highlight) 1px 2px
   );
 }
 
-.tape-display__value {
-  font-size: 1.5rem;
+/* A small lit readout rather than a full inset screen — the same glass, at the
+   size a shallow unit can afford. */
+.tape-clock {
+  min-width: 4.2rem;
+  padding: 4px 7px;
+  border-radius: 3px;
+  border: 1px solid var(--control-edge);
+  background: linear-gradient(180deg, #0c0e0f, var(--inset-dark));
+  box-shadow:
+    inset 0 2px 6px rgb(0 0 0 / 85%),
+    0 1px 0 var(--highlight);
+  color: var(--display-ink);
+  font-size: 0.8125rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.1em;
-  color: var(--display-ink);
-}
-
-.tape-display__unit {
-  font-size: 0.5625rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  color: var(--muted-ink);
+  letter-spacing: 0.08em;
+  text-align: center;
 }
 
 .tape-status {
   margin: 0;
   min-height: 1em;
-  font-size: var(--label-size);
+  font-size: 0.5625rem;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
   color: var(--muted-ink);
   text-transform: uppercase;
+}
+
+/* Armed or rolling, REC carries the record-red rather than the panel grey —
+   the one control on the bench where colour itself means state. */
+.panel-button.is-live {
+  color: var(--display-ink);
+  background: linear-gradient(
+    180deg,
+    #e8595c 0 8%,
+    #d3383c 22%,
+    var(--accent-red) 60%,
+    #8e1518 100%
+  );
+  border-color: #7a1315;
+}
+
+.panel-button.is-live:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+/* The blink is never the only signal: the status line says ARMED in words. */
+.led--transport.is-blinking {
+  animation: tape-blink 640ms steps(1, end) infinite;
+}
+
+@keyframes tape-blink {
+  0%,
+  50% {
+    background: radial-gradient(
+      circle at 38% 32%,
+      var(--led-hot),
+      var(--accent-red) 62%
+    );
+    box-shadow: 0 0 9px var(--accent-red-glow);
+  }
+  50.01%,
+  100% {
+    background: radial-gradient(circle at 38% 32%, #4a4f50, var(--led-off) 70%);
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 55%);
+  }
 }

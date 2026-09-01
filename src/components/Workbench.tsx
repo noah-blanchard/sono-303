@@ -3,15 +3,18 @@ import { useSono303Dispatch, useSono303State } from "../state/hooks";
 import { PatchCable } from "./PatchCable";
 import { Sono303Panel } from "./Sono303Panel";
 import { SonoDistPanel } from "./SonoDistPanel";
+import { SonoTapePanel } from "./SonoTapePanel";
 
 /**
- * The two devices on one bench, joined by the patch cable.
+ * The three devices on one bench, two of them joined by the patch cable.
  *
  * It owns the socket refs because the cable has to measure both units at once
  * to draw itself, and it is the only component that knows where they sit.
  *
- * SONO-TAPE is deliberately not here: it is a drawer pulled out of the edge of
- * the screen, not a unit standing on the bench.
+ * SONO-DIST and SONO-TAPE share a rack in the right-hand column, sized so the
+ * pair stands about as tall as the instrument beside them. The rack is a
+ * wrapper rather than a third grid column, so the cable geometry — measured
+ * against the board — is unchanged.
  */
 export function Workbench() {
   const { patched } = useSono303State();
@@ -24,7 +27,10 @@ export function Workbench() {
   return (
     <div className="workbench" ref={boardRef}>
       <Sono303Panel outputJackRef={outputJackRef} />
-      <SonoDistPanel inputJackRef={inputJackRef} />
+      <div className="workbench__rack">
+        <SonoDistPanel inputJackRef={inputJackRef} />
+        <SonoTapePanel />
+      </div>
       <PatchCable
         boardRef={boardRef}
         sourceRef={outputJackRef}

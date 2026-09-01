@@ -59,6 +59,43 @@ export const WavExportContext = createContext<WavExport>(async () => {
   throw new Error("Wav export used outside an audio host");
 });
 
+/** What the recorder is doing, as the panel needs to show it. */
+export type LiveRecordState = "idle" | "armed" | "recording";
+
+/** One poll of the recorder, for the running timer and the state lamp. */
+export type LiveRecordReading = {
+  state: LiveRecordState;
+  /** Frames captured since the take opened; zero while merely armed. */
+  frames: number;
+  sampleRate: number;
+};
+
+/**
+ * Live capture of the master bus.
+ *
+ * `read` is a poll rather than a subscription on purpose: the only consumer is
+ * a running clock that repaints ten times a second anyway, and polling keeps
+ * audio-thread state out of React's render cycle entirely.
+ */
+export type LiveRecord = {
+  /** Opens a take. Snaps to the next downbeat when the sequencer is running. */
+  arm: () => Promise<void>;
+  /** Closes the take and saves the `.wav`. */
+  stop: () => Promise<void>;
+  read: () => LiveRecordReading;
+};
+
+/** Provided by `useSono303`, like the note gate and the bounce. */
+export const LiveRecordContext = createContext<LiveRecord>({
+  arm: async () => {
+    throw new Error("Live record used outside an audio host");
+  },
+  stop: async () => {
+    throw new Error("Live record used outside an audio host");
+  },
+  read: () => ({ state: "idle", frames: 0, sampleRate: 0 }),
+});
+
 /**
  * Where the browser is in the Web MIDI permission dance.
  *

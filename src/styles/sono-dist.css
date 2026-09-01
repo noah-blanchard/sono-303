@@ -25,6 +25,16 @@
   }
 }
 
+/* The two small units share the right-hand column as a rack. A wrapper rather
+   than a third grid column: the patch cable measures the jacks against the
+   board, and a third column would push the bench past the breakpoint on most
+   laptops. */
+.workbench__rack {
+  display: grid;
+  gap: clamp(20px, 2.6vw, 34px);
+  justify-items: center;
+}
+
 /* --------------------------------------------------------------- module */
 
 .dist-shell {

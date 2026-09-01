@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { renderPattern } from "../audio/renderPattern";
 import { SonoAudioRig } from "../audio/SonoAudioRig";
 import type { Sono303EngineFactory } from "../audio/engineApi";
 import { encodeWavMono24 } from "../audio/wavEncoder";
+import { LIVE_MAX_SECONDS, liveFileName } from "../sequencer/liveTake";
 import { exportFileName } from "../sequencer/tape";
-import type { NoteGate, WavExport } from "../state/contexts";
+import type { LiveRecord, NoteGate, WavExport } from "../state/contexts";
 import { useSono303Dispatch, useSono303State } from "../state/hooks";
 
-/** What the host publishes to the tree: live play, and the offline bounce. */
+/** What the host publishes: live play, the offline bounce, and live capture. */
 export type Sono303Host = {
   noteGate: NoteGate;
   exportWav: WavExport;
+  liveRecord: LiveRecord;
 };
 
 /** `20260831-1432` — sorts chronologically and survives a filesystem. */
@@ -60,6 +62,22 @@ export function useSono303(createEngine?: Sono303EngineFactory): Sono303Host {
     stateRef.current = state;
   }, [state]);
 
+  // Declared before the rig effect so the length-cap handler below can be wired
+  // to every rig, including one built by a remount. Reads only refs, so its
+  // identity is stable for the life of the hook.
+  const stopLive = useCallback(async (): Promise<void> => {
+    const rig = rigRef.current;
+    if (rig === null) return;
+    const take = await rig.recorder.stop();
+    // Stopping while still armed — before the downbeat ever landed — is a
+    // cancel, not a take. There is nothing to save.
+    if (take === null) return;
+    saveWav(
+      encodeWavMono24(take.samples, take.sampleRate),
+      liveFileName(stateRef.current.parameters.tempoBpm, timeStamp(new Date())),
+    );
+  }, []);
+
   // Lifecycle first: on (re)mount the rig exists before the effects below push
   // the current state into it. The factory is intentionally captured once here
   // — swapping factories requires a remount, which nothing needs.
@@ -68,6 +86,11 @@ export function useSono303(createEngine?: Sono303EngineFactory): Sono303Host {
     rigRef.current = rig;
     rig.synth.setStepListener((stepIndex) => {
       dispatch({ type: "transport/setCurrentStep", stepIndex });
+    });
+    // The five-minute cap ends the take itself; save it exactly as a manual
+    // stop would, so the user never loses what they had.
+    rig.recorder.onAutoStop(() => {
+      void stopLive();
     });
 
     return () => {
@@ -153,5 +176,34 @@ export function useSono303(createEngine?: Sono303EngineFactory): Sono303Host {
     [dispatch],
   );
 
-  return useMemo(() => ({ noteGate, exportWav }), [noteGate, exportWav]);
+  const liveRecord = useMemo<LiveRecord>(
+    () => ({
+      arm: async () => {
+        const rig = rigRef.current;
+        if (rig === null) return;
+        await rig.recorder.arm(
+          stateRef.current.parameters.tempoBpm,
+          LIVE_MAX_SECONDS,
+        );
+      },
+      stop: stopLive,
+      read: () => {
+        const recorder = rigRef.current?.recorder;
+        if (recorder === undefined) {
+          return { state: "idle" as const, frames: 0, sampleRate: 0 };
+        }
+        return {
+          state: recorder.state,
+          frames: recorder.frames,
+          sampleRate: recorder.sampleRate,
+        };
+      },
+    }),
+    [stopLive],
+  );
+
+  return useMemo(
+    () => ({ noteGate, exportWav, liveRecord }),
+    [noteGate, exportWav, liveRecord],
+  );
 }
