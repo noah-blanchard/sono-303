@@ -5,7 +5,7 @@ engine. The engine is a framework-agnostic TypeScript module with no React
 dependency. Any host — React, vanilla TS, a test harness, or a future
 non-web UI — can drive it through this interface alone.
 
-Canonical source: [src/audio/engineApi.ts](../src/audio/engineApi.ts).
+Canonical source: [src/core/audio/engineApi.ts](../src/core/audio/engineApi.ts).
 
 ## 1. Design principles
 
@@ -22,7 +22,7 @@ Canonical source: [src/audio/engineApi.ts](../src/audio/engineApi.ts).
 ## 2. Types
 
 ```ts
-// Re-exported from src/sequencer/types.ts — the engine and UI share these.
+// Re-exported from src/core/sequencer/types.ts — the engine and UI share these.
 
 type Step = {
   active: boolean;
@@ -225,8 +225,8 @@ dispose()          → once, on teardown
 The engine needs nothing UI-specific. A minimal vanilla-TypeScript host:
 
 ```ts
-import { Sono303Engine } from "./src/audio/Sono303Engine";
-import { createInitialState } from "./src/sequencer/defaults";
+import { Sono303Engine } from "./src/core/audio/Sono303Engine";
+import { createInitialState } from "./src/core/sequencer/defaults";
 
 const state = createInitialState();
 const engine = new Sono303Engine();
@@ -268,8 +268,8 @@ type Sono303Host = {
 
 | Implementation         | File                              | Purpose |
 | ---------------------- | --------------------------------- | ------- |
-| `MockSono303Engine`    | `src/audio/MockSono303Engine.ts`  | M1 stand-in: tempo-driven `setInterval` playhead, zero Tone.js, no sound. Also a reference implementation of this contract. |
-| `Sono303Engine`        | `src/audio/Sono303Engine.ts`      | Real Tone.js engine (Milestone 2): one `Tone.MonoSynth` + one `Tone.Sequence`, audio-clock playhead. |
+| `MockSono303Engine`    | `src/core/audio/MockSono303Engine.ts`  | M1 stand-in: tempo-driven `setInterval` playhead, zero Tone.js, no sound. Also a reference implementation of this contract. |
+| `Sono303Engine`        | `src/core/audio/Sono303Engine.ts`      | Real Tone.js engine (Milestone 2): one `Tone.MonoSynth` + one `Tone.Sequence`, audio-clock playhead. |
 
 Both implement `Sono303EngineApi` exactly. Hosts select one via a
 `Sono303EngineFactory`; swapping implementations must never require host
@@ -310,21 +310,21 @@ Contract notes:
 
 | Unit                    | File                              | Purpose |
 | ----------------------- | --------------------------------- | ------- |
-| `distortionCurves.ts`   | `src/audio/distortionCurves.ts`   | Pure transfer curves for CLASSIC / TURBO / O-DRIVE. The character of the module, testable with no AudioContext. |
-| `distortionMapping.ts`  | `src/sequencer/distortionMapping.ts` | Knob → Hz / dB / compensation. Lives in the data model so the UI can print readouts without importing `src/audio/`. |
-| `SonoDistEngine`        | `src/audio/SonoDistEngine.ts`     | The Tone.js graph, smoothing and anti-click mode transitions. |
-| `SonoAudioRig`          | `src/audio/SonoAudioRig.ts`       | Owns instrument + effect + master + limiter, and the only route to `Tone.Destination`. |
+| `distortionCurves.ts`   | `src/core/audio/distortionCurves.ts`   | Pure transfer curves for CLASSIC / TURBO / O-DRIVE. The character of the module, testable with no AudioContext. |
+| `distortionMapping.ts`  | `src/core/sequencer/distortionMapping.ts` | Knob → Hz / dB / compensation. Lives in the data model so the UI can print readouts without importing `src/core/audio/`. |
+| `SonoDistEngine`        | `src/core/audio/SonoDistEngine.ts`     | The Tone.js graph, smoothing and anti-click mode transitions. |
+| `SonoAudioRig`          | `src/core/audio/SonoAudioRig.ts`       | Owns instrument + effect + master + limiter, and the only route to `Tone.Destination`. |
 
 ## 10. Offline export — `renderPattern`
 
 SONO-TAPE bounces the phrase by reusing the whole instrument rather than
-re-implementing it. No module in `src/audio/` captures an AudioContext at
+re-implementing it. No module in `src/core/audio/` captures an AudioContext at
 import time, so building a **fresh `SonoAudioRig` inside a `Tone.Offline`
 callback** binds the entire graph to an `OfflineAudioContext`, and the rig's one
 route to `Tone.getDestination()` becomes the route into the rendered buffer.
 
 ```ts
-// src/audio/renderPattern.ts
+// src/core/audio/renderPattern.ts
 type RenderRequest = {
   steps: Pattern;
   parameters: SynthParameters;
@@ -363,9 +363,9 @@ Contract notes:
 
 | Unit               | File                          | Purpose |
 | ------------------ | ----------------------------- | ------- |
-| `renderPattern.ts` | `src/audio/renderPattern.ts`  | The offline bounce, and the four rules above. |
-| `wavEncoder.ts`    | `src/audio/wavEncoder.ts`     | Float32 → 24-bit mono PCM RIFF/WAVE bytes. Pure and DOM-free, so it returns `Uint8Array`, not a `Blob`. |
-| `tape.ts`          | `src/sequencer/tape.ts`       | Bar/second/sample math and the file name. In the data model so the panel can print the duration without importing `src/audio/`. |
+| `renderPattern.ts` | `src/core/audio/renderPattern.ts`  | The offline bounce, and the four rules above. |
+| `wavEncoder.ts`    | `src/core/audio/wavEncoder.ts`     | Float32 → 24-bit mono PCM RIFF/WAVE bytes. Pure and DOM-free, so it returns `Uint8Array`, not a `Blob`. |
+| `tape.ts`          | `src/core/sequencer/tape.ts`       | Bar/second/sample math and the file name. In the data model so the panel can print the duration without importing `src/core/audio/`. |
 
 ## 11. Live capture — `LiveRecorder`
 
@@ -375,7 +375,7 @@ records the real-time graph instead: knob moves, hand-played notes, MIDI, and
 the cable going into SONO-DIST mid-phrase all end up in the take.
 
 ```ts
-// src/audio/LiveRecorder.ts
+// src/core/audio/LiveRecorder.ts
 type LiveRecordState = "idle" | "armed" | "recording";
 type LiveTake = {
   samples: Float32Array;

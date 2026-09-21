@@ -29,21 +29,25 @@ anything from the spec's Explicit Non-Goals (§13).
 
 ## Architecture boundaries (enforced)
 
-1. `src/audio/` — framework-free TypeScript. **No React imports.** Owns all
+1. `src/core/audio/` — framework-free TypeScript. **No React imports.** Owns all
    Tone.js objects. See [docs/ENGINE_API.md](docs/ENGINE_API.md).
-2. `src/components/` — presentational React. **No Tone.js imports, no
-   `src/audio/` imports.** Communicate only by dispatching reducer actions.
+2. `src/modules/` and `src/studio/canvas/` — React panels and presentation.
+   **No Tone.js imports, no `src/core/audio/` imports.** Use reducer actions
+   and the host capabilities exposed through studio contexts.
    Anything the UI *and* the engine both need (e.g. the SONO-DIST knob
-   mappings) belongs in `src/sequencer/`, not in `src/audio/`.
-3. `src/sequencer/` — pure data model. No React, no Tone.js.
-4. `src/state/*Reducer.ts` — pure functions. No side effects, no Tone.js, no
+   mappings) belongs in `src/core/sequencer/`, not in `src/core/audio/`.
+3. `src/core/sequencer/` — pure data model. No React, no Tone.js.
+   Neither part of `src/core/` may import from `src/studio/` or `src/modules/`.
+   Keyboard/MIDI React hooks belong in `src/studio/input/`; shared controls
+   belong in `src/modules/shared/`.
+4. `src/studio/state/*Reducer.ts` — pure functions. No side effects, no Tone.js, no
    audio calls. State must stay serializable, and derived flags (like whether
    the distortion is active) are computed at render time, never stored.
-5. `src/hooks/useSono303.ts` — the **only** file allowed to bridge React and
-   `src/audio/`.
-6. Musical decision logic lives in pure functions (`src/audio/stepLogic.ts`,
-   `src/audio/distortionCurves.ts`, `src/sequencer/pitch.ts`,
-   `src/sequencer/distortionMapping.ts`) so it is unit-testable without Web
+5. `src/studio/audio/useSono303.ts` — the **only** file allowed to bridge React and
+   `src/core/audio/`.
+6. Musical decision logic lives in pure functions (`src/core/audio/stepLogic.ts`,
+   `src/core/audio/distortionCurves.ts`, `src/core/sequencer/pitch.ts`,
+   `src/core/sequencer/distortionMapping.ts`) so it is unit-testable without Web
    Audio.
 
 ## State invariants
@@ -95,11 +99,19 @@ Run all of these before declaring any milestone complete:
 ```bash
 bun run lint    # ESLint — must exit clean
 bun run build   # tsc -b && vite build — must exit clean
-bun test        # Vitest (from Milestone 2) — must pass
+bun run test    # Vitest (from Milestone 2) — must pass
 ```
 
 Also smoke-test `bun run dev` in a real browser for anything audio-related;
 build/lint cannot verify autoplay policies or sound.
+
+## Source migration
+
+The current layout is documented in [docs/REORGANIZATION.md](docs/REORGANIZATION.md).
+The `concept/` specifications retain their historical file trees. Use the
+current source map for paths; this move does not change musical behavior.
+React Flow is authorized for the future canvas, but is not installed by this
+file reorganization. The current host still manages one instrument rig.
 
 ## Milestone roadmap
 

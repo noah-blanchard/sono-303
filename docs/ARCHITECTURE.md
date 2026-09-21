@@ -7,104 +7,81 @@ engine contract ([ENGINE_API.md](ENGINE_API.md)).
 
 ## 1. Design goals
 
-1. **The sound engine is UI-agnostic.** `src/audio/` is framework-free
+1. **The sound engine is UI-agnostic.** `src/core/audio/` is framework-free
    TypeScript. It never imports React and is importable from any host
    (React, vanilla TS, tests).
 2. **The UI never touches Tone.js.** Components and state only dispatch
    serializable actions and read serializable state. The single integration
    point is `useSono303`.
 3. **Musical decisions are pure functions.** Pitch math, slide detection,
-   velocity, and release timing live in `src/audio/stepLogic.ts` and
-   `src/sequencer/pitch.ts` — unit-testable without Web Audio.
+   velocity, and release timing live in `src/core/audio/stepLogic.ts` and
+   `src/core/sequencer/pitch.ts` — unit-testable without Web Audio.
 4. **State is serializable.** Everything the UI knows lives in one
    `useReducer` state tree. No Tone.js objects, no class instances.
 
 ## 2. Repo map
 
-```
+```text
 sono-303/
-├── concept/                    # Product spec + visual reference (read-only inputs)
-│   ├── TB303_ARCHITECTURE.md   #   Authoritative product specification
-│   ├── SONO_DIST_ARCHITECTURE.md#  Distortion module specification
-│   ├── concept_art_sono303.png #   Visual target for Milestone 1
-│   ├── dist_concept_art.png    #   Visual target for SONO-DIST
-│   └── concept_art_2.png
+├── concept/                         # Product specs and visual references
 ├── docs/
-│   ├── PLAN.md                 # Milestone plan (M0 docs → M1 UI → M2 engine)
-│   ├── ARCHITECTURE.md         # This file
-│   └── ENGINE_API.md           # UI-agnostic engine contract
-├── AGENTS.md                   # Guidelines for agent contributors
+│   ├── PLAN.md                      # Historical M0–M2 roadmap
+│   ├── ARCHITECTURE.md               # Current boundaries and data flow
+│   ├── ENGINE_API.md                 # Framework-free engine contracts
+│   └── REORGANIZATION.md             # Migration map and core extraction
+├── AGENTS.md
 ├── src/
-│   ├── audio/                  # Sound engines — NO React imports allowed
-│   │   ├── engineApi.ts        #   Sono303EngineApi interface + factory type
-│   │   ├── MockSono303Engine.ts#   Mock engine (M1 stand-in, zero Tone.js)
-│   │   ├── Sono303Engine.ts    #   Real Tone.js engine (Milestone 2)
-│   │   ├── stepLogic.ts        #   Pure per-step musical decisions (M2)
-│   │   ├── distEngineApi.ts    #   SonoDistEngineApi interface
-│   │   ├── SonoDistEngine.ts   #   SONO-DIST effect graph + mode transitions
-│   │   ├── distortionCurves.ts #   Pure transfer curves for the three voicings
-│   │   ├── renderPattern.ts    #   Offline bounce via Tone.Offline
-│   │   ├── wavEncoder.ts       #   Pure Float32 → 24-bit mono RIFF/WAVE
-│   │   ├── LiveRecorder.ts     #   Live capture: worklet tap + bar snapping
-│   │   ├── tapProcessor.worklet.js# The tap, on the audio rendering thread
-│   │   └── SonoAudioRig.ts     #   Owns the whole path and the one route out
-│   ├── sequencer/              # Pure data model — NO React, NO Tone.js
-│   │   ├── types.ts            #   Step, Pattern, SynthParameters, State, Action
-│   │   ├── defaults.ts         #   Default parameters & 16-step pattern
-│   │   ├── distortionMapping.ts#   DRIVE/TONE/LEVEL → Hz, dB, compensation
-│   │   ├── keyMap.ts           #   FL-style computer-key → semitone map
-│   │   ├── velocity.ts         #   Where a note becomes an accent
-│   │   ├── tape.ts             #   Bar/second/sample math for SONO-TAPE
-│   │   ├── liveTake.ts         #   Bar snapping + take clock formatting
-│   │   ├── patchbay.ts         #   Ports, and the one-cable-per-jack rules
-│   │   └── pitch.ts            #   Pitch-class / octave / transpose math
-│   ├── state/                  # React state layer
-│   │   ├── sono303Reducer.ts   #   Pure reducer (serializable in/out)
-│   │   ├── sonoDistReducer.ts  #   Pure sub-reducer for the module
-│   │   ├── Sono303Context.tsx  #   Provider + state/dispatch hooks
-│   │   └── LiveInputProvider.tsx#  Mounts the keyboard + MIDI note sources
-│   ├── hooks/
-│   │   ├── useSono303.ts       #   THE integration seam (rig ↔ reducer)
-│   │   ├── useNoteInput.ts     #   One note source → the current mode
-│   │   ├── useComputerKeyboard.ts# Physical keys → notes (FL layout)
-│   │   └── useMidiInput.ts     #   Web MIDI access, device picker, notes
-│   ├── components/             # Presentational React — dispatch only
-│   │   ├── Workbench.tsx       #   The three devices, inside the patchbay
-│   │   ├── Module.tsx          #   The chassis every device is built from
-│   │   ├── PatchBay.tsx        #   Jack registry, cable drawing, patching
-│   │   ├── patchBayContext.ts  #   How a jack talks to the bay
-│   │   ├── Sono303Panel.tsx    #   Four-zone instrument layout
-│   │   ├── SoundControls.tsx   #   Zone 1: waveform + knobs
-│   │   ├── TransportControls.tsx#  Zone 2: start/stop, mode, tempo, transpose
-│   │   ├── StepSequencer.tsx   #   Zone 3: 16-step grid
-│   │   ├── StepButton.tsx      #   One step button + A/S indicators
-│   │   ├── StepEditor.tsx      #   Zone 4: keyboard + selected-step flags
-│   │   ├── MiniKeyboard.tsx    #   Playable two octaves (C1–B2 … C5–B6)
-│   │   ├── MidiControls.tsx    #   Zone 2: MIDI permission + device picker
-│   │   ├── SonoDistPanel.tsx   #   SONO-DIST faceplate
-│   │   ├── DistortionModeSelector.tsx# Exclusive four-way voicing selector
-│   │   ├── SonoTapePanel.tsx   #   SONO-TAPE: live capture + offline bounce
-│   │   ├── JackSocket.tsx      #   Panel jack; click/keyboard patching
-│   │   └── RotaryKnob.tsx      #   Accessible reusable knob
-│   ├── styles/
-│   │   ├── tokens.css          #   Design tokens (colors, radii, sizes)
-│   │   ├── sono303.css         #   Instrument-specific styling
-│   │   ├── sono-dist.css       #   Bench, shared module plate, jacks, cables
-│   │   └── sono-tape.css       #   Recorder styling
-│   ├── App.tsx                 #   Composition root
-│   └── main.tsx                #   Entry: mounts App with provider
-├── index.html
+│   ├── core/                        # Extractable; no React or studio imports
+│   │   ├── README.md                # Dependencies and extraction instructions
+│   │   ├── audio/                   # Engines, rig, recording, WAV, worklet
+│   │   │   ├── Sono303Engine.ts
+│   │   │   ├── SonoDistEngine.ts
+│   │   │   ├── SonoAudioRig.ts
+│   │   │   ├── engineApi.ts
+│   │   │   ├── distEngineApi.ts
+│   │   │   ├── MockSono303Engine.ts
+│   │   │   ├── stepLogic.ts
+│   │   │   ├── distortionCurves.ts
+│   │   │   ├── LiveRecorder.ts
+│   │   │   ├── tapProcessor.worklet.js
+│   │   │   ├── renderPattern.ts
+│   │   │   └── wavEncoder.ts
+│   │   └── sequencer/               # Types, defaults, pitch, mappings, timing
+│   ├── studio/
+│   │   ├── audio/useSono303.ts       # Only React ↔ engine bridge
+│   │   ├── state/                   # Reducers, contexts and state hooks
+│   │   ├── input/                   # Note input, keyboard, MIDI and provider
+│   │   ├── canvas/                  # Current fixed workbench and patchbay
+│   │   │   ├── Workbench.tsx
+│   │   │   ├── PatchBay.tsx
+│   │   │   ├── patchBayContext.ts
+│   │   │   └── JackSocket.tsx
+│   │   └── styles/                  # Existing shared theme, unchanged cascade
+│   ├── modules/
+│   │   ├── sono303/                 # Instrument panel, controls and keyboard
+│   │   ├── distortion/              # Effect panel and mode selector
+│   │   ├── tape/                    # Recorder panel
+│   │   └── shared/                  # Module chassis, RotaryKnob, knobScales
+│   ├── App.tsx                      # Composition root and stylesheet imports
+│   ├── main.tsx                     # Provider and entry point
+│   └── vite-env.d.ts
 ├── package.json
 ├── vite.config.ts
 └── tsconfig*.json
 ```
+
+Tests stay next to the implementations they exercise. The directory named
+`studio/canvas` currently contains the fixed workbench, not a React Flow
+canvas. No output panel exists yet: the existing output and limiter remain in
+`core/audio/SonoAudioRig.ts`. See [REORGANIZATION.md](REORGANIZATION.md) for
+the planned follow-up boundaries.
 
 ## 3. Module boundaries
 
 ```mermaid
 flowchart TD
     subgraph UI["React (state + components)"]
-        C[components/*] -- dispatch actions --> R[sono303Reducer]
+        C[modules/* + studio/canvas/*] -- dispatch actions --> R[sono303Reducer]
         R -- new state --> C
         R --> CTX[Sono303Context]
     end
@@ -156,7 +133,7 @@ flowchart TD
     LOGIC --> P
 ```
 
-`distortionMapping.ts` sits in the pure data model rather than in `src/audio/`
+`distortionMapping.ts` sits in the pure data model rather than in `src/core/audio/`
 precisely so both the effect engine and the knob readouts can use it without
 breaking the components-never-import-audio rule. `tape.ts` is there for the
 same reason: SONO-TAPE prints the bounce duration on the panel, and the
@@ -165,7 +142,7 @@ renderer needs the same number in samples.
 ### Offline export (SONO-TAPE)
 
 The bounce reuses the entire instrument rather than re-implementing it. Nothing
-in `src/audio/` captures an AudioContext at import time — every touchpoint goes
+in `src/core/audio/` captures an AudioContext at import time — every touchpoint goes
 through `Tone.getContext()`, `getTransport()` or `getDestination()`, resolved
 when called — so building a **fresh `SonoAudioRig` inside a `Tone.Offline`
 callback** binds the whole graph to an `OfflineAudioContext`, and the rig's one
@@ -216,7 +193,7 @@ Two rules define what the cables mean:
   hear: recording dry while monitoring through the distortion is a real thing
   to want.
 
-A jack holds exactly one cable. `src/sequencer/patchbay.ts` owns those rules as
+A jack holds exactly one cable. `src/core/sequencer/patchbay.ts` owns those rules as
 pure functions; `PatchBay` draws one lead per connection from the same list, so
 a drawn cable and a real one cannot disagree. Whether SONO-DIST is in the path
 is never stored — it is `isDistPatched(connections)`.
@@ -226,21 +203,22 @@ Rules:
 - Every device is built from `<Module>`: shell, screws, faceplate and jacks.
   A module declares its ports and its own controls, and never learns that
   cables exist — `PatchBay` measures the sockets and draws the leads.
-- `src/components/*` imports from `src/state/*` and `src/sequencer/types.ts`
-  only. **Never** from `src/audio/*` and **never** imports `tone`.
-- `src/hooks/useSono303.ts` is the **only** file allowed to import both
-  `src/audio/*` and the React layer. It publishes a `NoteGate` through
+- `src/modules/*` and `src/studio/canvas/*` use the studio contexts, input
+  hooks and pure core data. **Never** import `src/core/audio/*` or `tone`.
+- `src/core/*` never imports `src/studio/*` or `src/modules/*`.
+- `src/studio/audio/useSono303.ts` is the **only** file allowed to import both
+  `src/core/audio/*` and the React layer. It publishes a `NoteGate` through
   `NoteGateContext` and a `WavExport` through `WavExportContext`; the note-source
   hooks and SONO-TAPE reach the instrument through those contexts, so none of
-  them imports `src/audio/*` either.
-- `src/audio/*` never imports React.
-- `src/sequencer/*` imports neither React nor Tone.js.
+  them imports `src/core/audio/*` either.
+- `src/core/audio/*` never imports React.
+- `src/core/sequencer/*` imports neither React nor Tone.js.
 - The reducer is a pure function: `(state, action) => state`, no side effects.
 
 ## 4. State model
 
 ```ts
-// src/sequencer/types.ts (summary — see file for the canonical definitions)
+// src/core/sequencer/types.ts (summary — see file for the canonical definitions)
 type Sono303State = {
   mode: "play" | "write";            // entering "play" stops the transport
   transport: "started" | "stopped";
@@ -310,14 +288,14 @@ Invariants enforced by the reducer:
 
 ## 5. Action catalog
 
-All reducer actions (`src/sequencer/types.ts`, `Sono303Action`):
+All reducer actions (`src/core/sequencer/types.ts`, `Sono303Action`):
 
 | Action                        | Payload                    | Effect |
 | ----------------------------- | -------------------------- | ------ |
 | `transport/toggle`            | —                          | started ↔ stopped |
 | `transport/stop`              | —                          | always stops and clears the playhead; never starts |
 | `transport/setCurrentStep`    | `stepIndex: number \| null`| move/clear playhead |
-| `mode/set`                    | `"play" \| "write"`        | switch mode (never touches transport) |
+| `mode/set`                    | `"play" \| "write"`        | enter PLAY: stop and clear playhead; enter WRITE: preserve transport |
 | `parameter/set`               | `key`, `value`             | set one `SynthParameters` field |
 | `step/select`                 | `stepIndex`                | choose step 0..15; re-centres the keyboard window if that step is off screen |
 | `step/setPitch`               | `note`, `octave?`          | set note + `active = true`; never moves the window |
@@ -399,11 +377,11 @@ sequenceDiagram
 | `audio/engineApi.ts`     | —  | interface defined          | unchanged               |
 | Engine implementation    | —  | `MockSono303Engine` (timer)| `Sono303Engine` (Tone.js) ✅ |
 | `audio/stepLogic.ts`     | —  | —                          | pure logic + tests ✅   |
-| `components/*`           | —  | full four-zone UI          | unchanged               |
+| `modules/*` + `studio/canvas/*`           | —  | full four-zone UI          | unchanged               |
 | `hooks/useSono303.ts`    | —  | wired to mock factory      | real engine factory ✅  |
 
 The mock and the real engine implement the **same** `Sono303EngineApi`.
-Milestone 2 changed nothing in `components/`, `state/`, or `sequencer/` —
+Milestone 2 changed nothing in `modules/`, `studio/state/`, or `core/sequencer/` —
 only which factory `useSono303` uses by default. The mock remains in the
 repo as a test/demo artifact and as a reference implementation of the
 engine contract.

@@ -1,0 +1,353 @@
+import { describe, expect, it } from "vitest";
+import { STEP_COUNT, createInitialState } from "../../core/sequencer/defaults";
+import type { Sono303State } from "../../core/sequencer/types";
+import { sono303Reducer } from "./sono303Reducer";
+
+function stateWith(overrides: Partial<Sono303State> = {}): Sono303State {
+  return { ...createInitialState(), ...overrides };
+}
+
+describe("sono303Reducer invariants", () => {
+  it("always keeps exactly 16 steps", () => {
+    const state = sono303Reducer(createInitialState(), {
+      type: "step/setPitch",
+      note: "E",
+    });
+    expect(state.steps).toHaveLength(STEP_COUNT);
+  });
+
+  it("clamps envMod and accentAmount to 0..1", () => {
+    let state = sono303Reducer(createInitialState(), {
+      type: "parameter/set",
+      key: "envMod",
+      value: 4,
+    });
+    expect(state.parameters.envMod).toBe(1);
+
+    state = sono303Reducer(state, {
+      type: "parameter/set",
+      key: "accentAmount",
+      value: -2,
+    });
+    expect(state.parameters.accentAmount).toBe(0);
+  });
+
+  it("clamps selectedStep to 0..15", () => {
+    let state = sono303Reducer(createInitialState(), {
+      type: "step/select",
+      stepIndex: 99,
+    });
+    expect(state.selectedStep).toBe(15);
+
+    state = sono303Reducer(state, { type: "step/select", stepIndex: -5 });
+    expect(state.selectedStep).toBe(0);
+  });
+
+  it("clamps the OCT buttons to the five keyboard levels", () => {
+    let state = stateWith({ selectedStep: 0 });
+    for (let i = 0; i < 10; i += 1) {
+      state = sono303Reducer(state, { type: "step/changeOctave", delta: 1 });
+    }
+    expect(state.keyboardOctave).toBe(5);
+    expect(state.steps[0].octave).toBe(6);
+
+    for (let i = 0; i < 10; i += 1) {
+      state = sono303Reducer(state, { type: "step/changeOctave", delta: -1 });
+    }
+    expect(state.keyboardOctave).toBe(1);
+    expect(state.steps[0].octave).toBe(1);
+  });
+
+  it("carries the selected pitch along with the window", () => {
+    let state = stateWith({ selectedStep: 0, keyboardOctave: 3 });
+    state = sono303Reducer(state, {
+      type: "step/setPitch",
+      note: "C",
+      octave: 4,
+    });
+
+    // C4 sits in the upper row of the C3-B4 window and must stay there.
+    state = sono303Reducer(state, { type: "step/changeOctave", delta: -1 });
+    expect(state.keyboardOctave).toBe(2);
+    expect(state.steps[0].octave).toBe(3);
+  });
+
+  it("never moves the window when a key is picked", () => {
+    let state = stateWith({ selectedStep: 0, keyboardOctave: 4 });
+    state = sono303Reducer(state, {
+      type: "step/setPitch",
+      note: "C",
+      octave: 5,
+    });
+    expect(state.steps[0].octave).toBe(5);
+    expect(state.keyboardOctave).toBe(4);
+  });
+
+  it("advances the selection and wraps at the end of the pattern", () => {
+    let state = stateWith({ selectedStep: 14 });
+    state = sono303Reducer(state, { type: "step/advance" });
+    expect(state.selectedStep).toBe(15);
+    state = sono303Reducer(state, { type: "step/advance" });
+    expect(state.selectedStep).toBe(0);
+  });
+
+  it("never moves the keyboard window while advancing", () => {
+    // The whole point of advancing is writing a run of notes without lifting
+    // your eyes; a window that jumped mid-run would defeat it.
+    const steps = createInitialState().steps.slice();
+    steps[1] = { ...steps[1], octave: 1 };
+    let state = stateWith({ selectedStep: 0, keyboardOctave: 4, steps });
+
+    state = sono303Reducer(state, { type: "step/advance" });
+
+    expect(state.selectedStep).toBe(1);
+    expect(state.keyboardOctave).toBe(4);
+    // An explicit selection still re-centres, as before.
+    state = sono303Reducer(state, { type: "step/select", stepIndex: 1 });
+    expect(state.keyboardOctave).toBe(4);
+    state = sono303Reducer(state, { type: "step/select", stepIndex: 0 });
+    state = sono303Reducer(state, { type: "step/select", stepIndex: 1 });
+    expect(state.keyboardOctave).toBe(1);
+  });
+
+  it("writes a run of notes across consecutive steps", () => {
+    // The StepEditor flow: setPitch then advance, repeated.
+    let state = stateWith({ selectedStep: 0, keyboardOctave: 3 });
+    for (const note of ["C", "E", "G"] as const) {
+      state = sono303Reducer(state, { type: "step/setPitch", note, octave: 3 });
+      state = sono303Reducer(state, { type: "step/advance" });
+    }
+
+    expect(state.steps.slice(0, 3).map((s) => s.note)).toEqual(["C", "E", "G"]);
+    expect(state.steps.slice(0, 3).every((s) => s.active)).toBe(true);
+    expect(state.selectedStep).toBe(3);
+    expect(state.keyboardOctave).toBe(3);
+  });
+
+  it("re-centres the window only when the selected step is off screen", () => {
+    let state = stateWith({ selectedStep: 0, keyboardOctave: 3 });
+
+    // Every default step is on octave 3, still inside the C3-B4 window.
+    state = sono303Reducer(state, { type: "step/select", stepIndex: 1 });
+    expect(state.keyboardOctave).toBe(3);
+
+    const steps = state.steps.slice();
+    steps[2] = { ...steps[2], octave: 1 };
+    state = sono303Reducer(
+      { ...state, steps },
+      { type: "step/select", stepIndex: 2 },
+    );
+    expect(state.keyboardOctave).toBe(1);
+  });
+
+  it("accepts octave 6 from the keyboard's upper row and clamps beyond it", () => {
+    let state = sono303Reducer(
+      stateWith({ selectedStep: 0, keyboardOctave: 5 }),
+      { type: "step/setPitch", note: "C", octave: 6 },
+    );
+    expect(state.steps[0].octave).toBe(6);
+
+    // Window and pitch are both at their top, so OCT + does nothing.
+    state = sono303Reducer(state, { type: "step/changeOctave", delta: 1 });
+    expect(state.keyboardOctave).toBe(5);
+    expect(state.steps[0].octave).toBe(6);
+
+    state = sono303Reducer(state, {
+      type: "step/setPitch",
+      note: "C",
+      octave: 9,
+    });
+    expect(state.steps[0].octave).toBe(6);
+  });
+
+  it("clamps transpose to ±12 and rounds it", () => {
+    let state = sono303Reducer(createInitialState(), {
+      type: "parameter/set",
+      key: "transposeSemitones",
+      value: 30,
+    });
+    expect(state.parameters.transposeSemitones).toBe(12);
+
+    state = sono303Reducer(state, {
+      type: "parameter/set",
+      key: "transposeSemitones",
+      value: -30,
+    });
+    expect(state.parameters.transposeSemitones).toBe(-12);
+
+    state = sono303Reducer(state, {
+      type: "parameter/set",
+      key: "transposeSemitones",
+      value: 3.6,
+    });
+    expect(state.parameters.transposeSemitones).toBe(4);
+  });
+
+  it("enabling REST resets accent and slide to false", () => {
+    let state = stateWith({ selectedStep: 2 });
+    state = sono303Reducer(state, { type: "step/setPitch", note: "G" });
+    state = sono303Reducer(state, { type: "step/toggleAccent" });
+    state = sono303Reducer(state, { type: "step/toggleSlide" });
+    expect(state.steps[2].accent).toBe(true);
+    expect(state.steps[2].slide).toBe(true);
+
+    state = sono303Reducer(state, { type: "step/setRest", rest: true });
+    expect(state.steps[2].active).toBe(false);
+    expect(state.steps[2].accent).toBe(false);
+    expect(state.steps[2].slide).toBe(false);
+  });
+
+  it("stops the sequencer when PLAY takes over", () => {
+    let state = sono303Reducer(createInitialState(), {
+      type: "transport/toggle",
+    });
+    state = sono303Reducer(state, { type: "transport/setCurrentStep", stepIndex: 5 });
+    expect(state.transport).toBe("started");
+    expect(state.mode).toBe("write");
+
+    // PLAY is a live instrument, not a pattern player: the sequencer stops and
+    // the playhead clears, so START/STOP can be locked out with nothing
+    // left running behind it.
+    state = sono303Reducer(state, { type: "mode/set", mode: "play" });
+    expect(state.mode).toBe("play");
+    expect(state.transport).toBe("stopped");
+    expect(state.currentStep).toBeNull();
+  });
+
+  it("leaves the transport alone when WRITE takes over", () => {
+    // Only the PLAY direction is coupled — returning to WRITE must not start
+    // anything the user did not ask for.
+    let state = stateWith({ mode: "play", transport: "stopped" });
+    state = sono303Reducer(state, { type: "mode/set", mode: "write" });
+    expect(state.mode).toBe("write");
+    expect(state.transport).toBe("stopped");
+
+    state = sono303Reducer(state, { type: "transport/toggle" });
+    state = sono303Reducer(state, { type: "mode/set", mode: "write" });
+    expect(state.transport).toBe("started");
+  });
+
+  it("clears the playhead when transport stops", () => {
+    let state = stateWith({ transport: "started", currentStep: 7 });
+    state = sono303Reducer(state, { type: "transport/toggle" });
+    expect(state.currentStep).toBeNull();
+  });
+
+  it("does not toggle accent or slide on a rest step", () => {
+    let state = stateWith({ selectedStep: 1 });
+    state = sono303Reducer(state, { type: "step/toggleAccent" });
+    state = sono303Reducer(state, { type: "step/toggleSlide" });
+    expect(state.steps[1].accent).toBe(false);
+    expect(state.steps[1].slide).toBe(false);
+  });
+});
+
+describe("sono303Reducer live play", () => {
+  it("moves only the playable range in PLAY", () => {
+    const before = stateWith({ mode: "play", selectedStep: 0, keyboardOctave: 3 });
+    const after = sono303Reducer(before, { type: "step/changeOctave", delta: 1 });
+
+    // OCT still works in PLAY — it transposes what the keyboard plays — but
+    // there is no step being edited, so the pattern must come out untouched.
+    expect(after.keyboardOctave).toBe(4);
+    expect(after.steps).toEqual(before.steps);
+  });
+
+  it("still clamps the playable range in PLAY", () => {
+    let state = stateWith({ mode: "play", keyboardOctave: 5 });
+    state = sono303Reducer(state, { type: "step/changeOctave", delta: 1 });
+    expect(state.keyboardOctave).toBe(5);
+  });
+
+  it("writes an accent when a note is hit hard", () => {
+    let state = stateWith({ selectedStep: 0 });
+    state = sono303Reducer(state, {
+      type: "step/setPitch",
+      note: "D",
+      octave: 3,
+      accent: true,
+    });
+    expect(state.steps[0]).toMatchObject({ note: "D", accent: true, active: true });
+  });
+
+  it("leaves an existing accent alone when none is given", () => {
+    let state = stateWith({ selectedStep: 0 });
+    state = sono303Reducer(state, {
+      type: "step/setPitch",
+      note: "D",
+      octave: 3,
+      accent: true,
+    });
+    // A softly played note re-pitches the step without clearing its accent:
+    // `accent` only ever forces the flag on.
+    state = sono303Reducer(state, { type: "step/setPitch", note: "E", octave: 3 });
+    expect(state.steps[0].accent).toBe(true);
+
+    state = sono303Reducer(state, {
+      type: "step/setPitch",
+      note: "F",
+      octave: 3,
+      accent: false,
+    });
+    expect(state.steps[0].accent).toBe(true);
+  });
+
+  it("tracks which notes are sounding", () => {
+    let state = sono303Reducer(createInitialState(), {
+      type: "notes/setHeld",
+      midi: 60,
+      held: true,
+    });
+    state = sono303Reducer(state, { type: "notes/setHeld", midi: 64, held: true });
+    expect(state.heldNotes).toEqual([60, 64]);
+
+    // Holding an already-held note must not stack a duplicate.
+    const same = sono303Reducer(state, {
+      type: "notes/setHeld",
+      midi: 60,
+      held: true,
+    });
+    expect(same).toBe(state);
+
+    state = sono303Reducer(state, { type: "notes/setHeld", midi: 60, held: false });
+    expect(state.heldNotes).toEqual([64]);
+
+    state = sono303Reducer(state, { type: "notes/releaseAll" });
+    expect(state.heldNotes).toEqual([]);
+  });
+
+  it("toggles the key hints", () => {
+    const initial = createInitialState();
+    expect(initial.keyHintsVisible).toBe(true);
+    const hidden = sono303Reducer(initial, { type: "ui/toggleKeyHints" });
+    expect(hidden.keyHintsVisible).toBe(false);
+    expect(sono303Reducer(hidden, { type: "ui/toggleKeyHints" }).keyHintsVisible).toBe(
+      true,
+    );
+  });
+
+  it("sets the SONO-TAPE bar count", () => {
+    const initial = createInitialState();
+    expect(initial.tape.bars).toBe(1);
+    expect(sono303Reducer(initial, { type: "tape/setBars", bars: 4 }).tape.bars).toBe(4);
+  });
+
+  it("returns the identical state when the bar count is unchanged", () => {
+    const state = stateWith({ tape: { bars: 8 } });
+    expect(sono303Reducer(state, { type: "tape/setBars", bars: 8 })).toBe(state);
+  });
+
+  it("stops the transport unconditionally and clears the playhead", () => {
+    const running = stateWith({ transport: "started", currentStep: 7 });
+    const stopped = sono303Reducer(running, { type: "transport/stop" });
+    expect(stopped.transport).toBe("stopped");
+    expect(stopped.currentStep).toBeNull();
+  });
+
+  // Unlike `transport/toggle`, stopping an already-stopped transport must never
+  // start it — SONO-TAPE bounces from step 0 and cannot share the clock.
+  it("is idempotent when the transport is already stopped", () => {
+    const state = stateWith({ transport: "stopped" });
+    expect(sono303Reducer(state, { type: "transport/stop" })).toBe(state);
+  });
+});

@@ -61,7 +61,18 @@ stored refusal.
 | `bun run build`  | Type-check and produce a static build |
 | `bun run lint`   | Run ESLint                         |
 | `bun run preview`| Preview the production build       |
-| `bun test`       | Run unit tests (Vitest, from Milestone 2) |
+| `bun run test`       | Run unit tests (Vitest, from Milestone 2) |
+
+## Source layout
+
+- `src/core/` — framework-free audio engines and pure musical data, with their tests.
+- `src/studio/` — React/audio integration, application state, live input, workbench and theme.
+- `src/modules/` — SONO-303, SONO-DIST, SONO-TAPE panels and shared controls.
+
+The current workbench remains a fixed layout. This reorganization prepares the
+code for a future canvas; it does not yet add React Flow or multiple instruments.
+See [docs/REORGANIZATION.md](docs/REORGANIZATION.md) for the migration map and
+instructions for extracting the headless core.
 
 ## Documentation
 
@@ -74,7 +85,7 @@ stored refusal.
 ## Status
 
 All milestones are complete: the panel is fully interactive and the real
-Tone.js sound engine (`src/audio/Sono303Engine.ts`) is wired in. Audio only
+Tone.js sound engine (`src/core/audio/Sono303Engine.ts`) is wired in. Audio only
 ever starts from an explicit user gesture (the START button).
 
 ## React Compiler

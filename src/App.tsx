@@ -1,15 +1,15 @@
-import { Workbench } from "./components/Workbench";
-import { useSono303 } from "./hooks/useSono303";
+import { Workbench } from "./studio/canvas/Workbench";
+import { useSono303 } from "./studio/audio/useSono303";
 import {
   LiveRecordContext,
   NoteGateContext,
   WavExportContext,
-} from "./state/contexts";
-import { LiveInputProvider } from "./state/LiveInputProvider";
-import "./styles/tokens.css";
-import "./styles/sono303.css";
-import "./styles/sono-dist.css";
-import "./styles/sono-tape.css";
+} from "./studio/state/contexts";
+import { LiveInputProvider } from "./studio/input/LiveInputProvider";
+import "./studio/styles/tokens.css";
+import "./studio/styles/sono303.css";
+import "./studio/styles/sono-dist.css";
+import "./studio/styles/sono-tape.css";
 
 export default function App() {
   // The only bridge between React state and the audio rig.
